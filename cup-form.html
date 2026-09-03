@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cup Form</title>
+    <style>
+    .form-container { max-width:600px; margin:0 auto; background:#f9f9f9; padding:30px; border-radius:8px; }
+    .form-container label { display:block; margin-bottom:8px; font-weight:bold; }
+    .form-container input, .form-container select { width:100%; padding:10px; margin-bottom:20px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; }
+    .btn-save { background:#007cba; color:white; border:none; padding:10px 30px; border-radius:4px; cursor:pointer; }
+    .btn-save:hover { background:#005a87; }
+    .btn-back { display:inline-block; padding:10px 20px; background:#ccc; color:#333; border-radius:4px; text-decoration:none; }
+    .btn-back:hover { background:#bbb; }
+    .mock-note { color:#999; font-style:italic; text-align:center; margin-top:30px; }
+    .text-center { text-align:center; }
+    h1 { text-align:center; }
+</style>
+
+<h1 id="form-title">🏆 Add Cup</h1>
+
+<div class="form-container">
+    <form onsubmit="alert('Save function will be available after backend integration.'); return false;">
+        <label>Cup Name</label>
+        <input type="text" id="cup-name" placeholder="e.g. XCO Cup 2027">
+
+        <label>Season</label>
+        <select id="season">
+            <option>2026 XCO Cup</option>
+            <option>2025 XCO Cup</option>
+            <option>2024 XCO Cup</option>
+        </select>
+
+        <label>Category / Series</label>
+        <input type="text" id="category" placeholder="e.g. M Elite, N 19">
+
+        <label>Scoring System</label>
+        <select id="scoring">
+            <option>Standard (30-25-21-18-16-14-12-10-8-7-6-5-4-3-2-1)</option>
+            <option>Custom</option>
+        </select>
+
+        <label>Status</label>
+        <select id="status">
+            <option>Active</option>
+            <option>Upcoming</option>
+            <option>Ended</option>
+        </select>
+
+        <div class="text-center" style="margin-top:20px;">
+            <button type="submit" class="btn-save" id="save-btn">💾 Save Changes</button>
+        </div>
+    </form>
+</div>
+
+
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const action = urlParams.get('action');
+
+    if (action === 'edit') {
+        document.getElementById('form-title').textContent = '🏆 Edit Cup';
+        document.getElementById('cup-name').value = 'XCO Cup 2026';
+        document.getElementById('category').value = 'M Elite, N 19, N Elite, M 40, N 40, M 50, N 50, MU 19';
+        document.getElementById('status').value = 'Active';
+    } else {
+        document.getElementById('form-title').textContent = '🏆 Add Cup';
+    }
+</script>
+</body>
+</html>
