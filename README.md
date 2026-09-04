@@ -7,7 +7,7 @@
 - **Chenjing Zhuang** –
 - 
 - 
-- 
+- **Saku Hyvärinen**
 
 ## 3. Technologies
 
