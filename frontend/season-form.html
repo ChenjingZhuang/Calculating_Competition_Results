@@ -20,9 +20,7 @@
 <h1 id="form-title">Add Season</h1>
 
 <div class="form-container">
-    <form onsubmit="alert('Save function will be available after backend integration.'); return false;">
-        <label>Season Name</label>
-        <input type="text" id="season-name" placeholder="e.g. 2027 XCO Cup">
+    <form id="season-form">        <input type="text" id="season-name" placeholder="e.g. 2027 XCO Cup">
 
         <label>Cup</label>
         <select id="cup">
@@ -54,16 +52,68 @@
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const action = urlParams.get('action');
+    const seasonId = urlParams.get('id');
+    const seasonForm = document.getElementById('season-form');
+    const saveButton = document.getElementById('save-btn');
 
     if (action === 'edit') {
         document.getElementById('form-title').textContent = '📝 Edit Season';
         document.getElementById('season-name').value = '2026 XCO Cup';
         document.getElementById('start-date').value = '2026-05-01';
         document.getElementById('end-date').value = '2026-09-30';
-        document.getElementById('status').value = 'Active';
+        document.getElementById('status').value = 'active';
     } else {
         document.getElementById('form-title').textContent = '📝 Add Season';
     }
+
+    seasonForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        saveButton.disabled = true;
+        saveButton.textContent = 'Saving...';
+
+        const season = {
+            name: document.getElementById('season-name').value.trim(),
+            start_date: document.getElementById('start-date').value,
+            end_date: document.getElementById('end-date').value,
+            status: document.getElementById('status').value.toLowerCase()
+        };
+
+        if (seasonId) {
+            season.id = Number(seasonId);
+        }
+
+        const apiBase = window.competitionAdmin && window.competitionAdmin.restUrl
+            ? window.competitionAdmin.restUrl
+            : '/wp-json/competition/v1';
+
+        fetch(apiBase + '/seasons', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': window.competitionAdmin
+                    ? window.competitionAdmin.restNonce
+                    : ''
+            },
+            body: JSON.stringify(season)
+        })
+        .then(function(response) {
+            return response.json().then(function(data) {
+                if (!response.ok || data.success === false) {
+                    throw new Error(data.message || 'Could not save season.');
+                }
+                return data;
+            });
+        })
+        .then(function() {
+            alert('Season saved successfully.');
+            window.location.href = 'admin.php?page=competition-results';
+        })
+        .catch(function(error) {
+            alert(error.message);
+            saveButton.disabled = false;
+            saveButton.textContent = '💾 Save Changes';
+        });
+    });
 </script>
 </body>
 </html>
