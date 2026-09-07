@@ -1,0 +1,8 @@
+# Composer dependencies
+database/parser/vendor/
+
+# Local database credentials
+database/parser/db.php
+
+# macOS generated files
+.DS_Store
