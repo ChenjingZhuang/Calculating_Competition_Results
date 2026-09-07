@@ -5,9 +5,9 @@
 ## 2. Project Members and Roles
 
 - **Chenjing Zhuang** –
-- 
-- 
-- **Saku Hyvärinen**
+- **Nikolai Podkorytov** -
+- **Katherine Sebastin** -
+- **Saku Hyvärinen** -
 
 ## 3. Technologies
 
@@ -76,6 +76,9 @@
 | Member Name | Role | Main Responsibilities | Estimated Hours |
 | --- | --- | --- | --- |
 | Chenjing |  |  |  |
+| Nikolai |  |  |  |
+| Katherine |  |  |  |
+| Saku |  |  |  |
 
 ## 11. Timeline
 
