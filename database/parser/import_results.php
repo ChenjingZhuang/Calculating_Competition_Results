@@ -16,7 +16,7 @@ $filePath = __DIR__ . '/../sample-data/original-excel/TSkortteli26.xlsx';
 /*
  * These must already exist in the database.
  */
-$competitionId = 1;
+$competitionId = 2;
 $disciplineId = 1;
 $uploadedBy = 1;
 

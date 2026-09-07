@@ -153,6 +153,13 @@ function competition_results_enqueue_admin_assets( string $hook ) {
  * Render dashboard
  */
 function competition_results_render_dashboard() {
+    $competition_admin = array(
+        'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+        'restUrl'   => esc_url_raw( untrailingslashit( rest_url( 'competition/v1' ) ) ),
+        'restNonce' => wp_create_nonce( 'wp_rest' ),
+        'nonce'     => wp_create_nonce( 'competition_admin_nonce' ),
+    );
+    echo '<script>window.competitionAdmin = ' . wp_json_encode( $competition_admin ) . ';</script>';
     include COMPETITION_RESULTS_PLUGIN_DIR . 'frontend/admin-dashboard.html';
 }
 

@@ -17,8 +17,6 @@ if (!defined('ABSPATH')) {
 // Load calculator (without WordPress)
 require_once __DIR__ . '/../includes/competition-results-calculator.php';
 
-// Load calculator (without WordPress)
-require_once __DIR__ . '/../includes/competition-results-calculator.php';
 
 echo "===========================================\n";
 echo "Competition Results Calculator - Tests\n";
@@ -41,18 +39,29 @@ $race_results = [
 ];
 
 $scoring_table = [
-    1 => 100,
-    2 => 85,
-    3 => 75,
-    4 => 65,
-    5 => 55
+    1 => 30,
+    2 => 25,
+    3 => 21,
+    4 => 18,
+    5 => 16,
+    6 => 14,
+    7 => 12,
+    8 => 10,
+    9 => 8,
+    10 => 7,
+    11 => 6,
+    12 => 5,
+    13 => 4,
+    14 => 3,
+    15 => 2,
+    16 => 1
 ];
 
 $counted_limit = 3;
 
 $result = $calculator->calculate_rider_total($race_results, $counted_limit, $scoring_table);
 
-$expected = 260; // 100 + 85 + 75
+$expected = 76; // 30 + 25 + 21
 $actual = $result['total_score'];
 
 if ($actual === $expected) {
@@ -60,6 +69,32 @@ if ($actual === $expected) {
     $tests_passed++;
 } else {
     echo "❌ FAILED: Total score = $actual (expected $expected)\n";
+    $tests_failed++;
+}
+
+echo "\n";
+
+// ============================================
+// TEST 2A: Placements 16 and above receive one point
+// ============================================
+echo "TEST 2A: Placements 16+ receive one point\n";
+echo "-------------------------------------------\n";
+
+$race_results = [
+    ['placement' => 16, 'bonus_points' => 0],
+    ['placement' => 17, 'bonus_points' => 0],
+    ['placement' => 25, 'bonus_points' => 0],
+];
+
+$result = $calculator->calculate_rider_total($race_results, 3, $scoring_table);
+$expected = 3;
+$actual = $result['total_score'];
+
+if ($actual === $expected) {
+    echo "✅ PASSED: Placements 16+ receive one point\n";
+    $tests_passed++;
+} else {
+    echo "❌ FAILED: Placements 16+ total = $actual (expected $expected)\n";
     $tests_failed++;
 }
 
@@ -83,7 +118,7 @@ $counted_limit = 3; // Best 3 out of 5
 
 $result = $calculator->calculate_rider_total($race_results, $counted_limit, $scoring_table);
 
-$expected = 260; // Best 3: 100 + 85 + 75
+$expected = 76; // Best 3: 30 + 25 + 21
 $actual = $result['total_score'];
 
 if ($actual === $expected) {
@@ -115,7 +150,7 @@ $counted_limit = 5;
 
 $result = $calculator->calculate_rider_total($race_results, $counted_limit, $scoring_table);
 
-$expected = 260; // 100 + 0 + 85 + 0 + 75
+$expected = 76; // 30 + 0 + 25 + 0 + 21
 $actual = $result['total_score'];
 
 if ($actual === $expected) {
@@ -145,7 +180,7 @@ $counted_limit = 3;
 
 $result = $calculator->calculate_rider_total($race_results, $counted_limit, $scoring_table);
 
-$expected = 275; // 110 + 90 + 75
+$expected = 91; // 40 + 30 + 21
 $actual = $result['total_score'];
 
 if ($actual === $expected) {
@@ -242,9 +277,90 @@ if ($expected_order === $actual_order) {
 echo "\n";
 
 // ============================================
-// TEST 7: Edge case - empty results
+// TEST 7: Tie-breaker using second-place counts
 // ============================================
-echo "TEST 7: Edge case - empty results\n";
+echo "TEST 7: Tie-breaker using second-place counts\n";
+echo "-------------------------------------------\n";
+
+$riders = [
+    [
+        'athlete_name' => 'Athlete A',
+        'total_score' => 100,
+        'place_counts' => [1 => 1, 2 => 2, 3 => 0, 4 => 0, 5 => 0, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0]
+    ],
+    [
+        'athlete_name' => 'Athlete B',
+        'total_score' => 100,
+        'place_counts' => [1 => 1, 2 => 1, 3 => 2, 4 => 0, 5 => 0, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0]
+    ]
+];
+
+$sorted = $calculator->sort_standings($riders);
+$expected_order = ['Athlete A', 'Athlete B'];
+$actual_order = [$sorted[0]['athlete_name'], $sorted[1]['athlete_name']];
+
+if ($expected_order === $actual_order) {
+    echo "✅ PASSED: Second-place tie-breaker correctly applied\n";
+    $tests_passed++;
+} else {
+    echo "❌ FAILED: Second-place tie-breaker not correctly applied\n";
+    echo "   Expected: " . implode(', ', $expected_order) . "\n";
+    echo "   Actual: " . implode(', ', $actual_order) . "\n";
+    $tests_failed++;
+}
+
+echo "\n";
+
+// ============================================
+// TESTS 8-10: Tie-breakers using third, fourth and fifth places
+// ============================================
+$tie_breaker_cases = [
+    [
+        'label' => 'third-place',
+        'first' => [1 => 1, 2 => 1, 3 => 2, 4 => 0, 5 => 0, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0],
+        'second' => [1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 0, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0],
+    ],
+    [
+        'label' => 'fourth-place',
+        'first' => [1 => 1, 2 => 1, 3 => 1, 4 => 2, 5 => 0, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0],
+        'second' => [1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0],
+    ],
+    [
+        'label' => 'fifth-place',
+        'first' => [1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 2, 6 => 0, 7 => 0, 8 => 0, 9 => 0, 10 => 0],
+        'second' => [1 => 1, 2 => 1, 3 => 1, 4 => 1, 5 => 1, 6 => 1, 7 => 0, 8 => 0, 9 => 0, 10 => 0],
+    ],
+];
+
+foreach ( $tie_breaker_cases as $tie_breaker_case ) {
+    $sorted = $calculator->sort_standings([
+        [
+            'athlete_name' => 'Athlete A',
+            'total_score' => 100,
+            'place_counts' => $tie_breaker_case['first'],
+        ],
+        [
+            'athlete_name' => 'Athlete B',
+            'total_score' => 100,
+            'place_counts' => $tie_breaker_case['second'],
+        ],
+    ]);
+
+    if ( $sorted[0]['athlete_name'] === 'Athlete A' ) {
+        echo "TEST PASSED: {$tie_breaker_case['label']} tie-breaker\n";
+        $tests_passed++;
+    } else {
+        echo "TEST FAILED: {$tie_breaker_case['label']} tie-breaker\n";
+        $tests_failed++;
+    }
+}
+
+echo "\n";
+
+// ============================================
+// TEST 11: Edge case - empty results
+// ============================================
+echo "TEST 11: Edge case - empty results\n";
 echo "-------------------------------------------\n";
 
 $race_results = [];

@@ -73,15 +73,15 @@ class Competition_Admin {
         }
         
         $file = $_FILES['excel_file'];
-        $cup_id = intval( $_POST['cup_id'] ?? 0 );
+        $competition_id = intval( $_POST['competition_id'] ?? 0 );
         
-        if ( $cup_id <= 0 ) {
-            wp_send_json_error( array( 'message' => 'Invalid cup ID' ) );
+        if ( $competition_id <= 0 ) {
+            wp_send_json_error( array( 'message' => 'Invalid competition ID' ) );
         }
         
         // Import Excel
         $importer = new Competition_Excel_Importer();
-        $result = $importer->import( $file['tmp_name'], $cup_id );
+        $result = $importer->import( $file['tmp_name'], $competition_id );
         
         if ( is_wp_error( $result ) ) {
             wp_send_json_error( array( 'message' => $result->get_error_message() ) );
@@ -89,7 +89,17 @@ class Competition_Admin {
         
         // Save to database
         $db = new Competition_Database();
-        $inserted = $db->save_results( $result['results'] );
+        $inserted = $db->save_results(
+            $result['results'],
+            array(
+                'file_name' => $result['file_name'] ?? $file['name'] ?? 'WordPress upload',
+                'failed_records' => count( $result['errors'] ?? array() ),
+            )
+        );
+
+        if ( is_wp_error( $inserted ) ) {
+            wp_send_json_error( array( 'message' => $inserted->get_error_message() ) );
+        }
         
         wp_send_json_success( array(
             'message' => sprintf( 'Imported %d results', $inserted ),

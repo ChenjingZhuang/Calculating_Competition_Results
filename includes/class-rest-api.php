@@ -52,6 +52,27 @@ class Competition_REST_API {
                 )
             )
         ));
+
+        // Competitions
+        register_rest_route( 'competition/v1', '/competitions', array(
+            'methods'             => 'GET',
+            'callback'            => function( $request ) {
+                $db = new Competition_Database();
+                return rest_ensure_response( array(
+                    'success' => true,
+                    'data' => $db->get_competitions( absint( $request->get_param( 'cup_id' ) ) ),
+                ) );
+            },
+            'permission_callback' => '__return_true',
+            'args'                => array(
+                'cup_id' => array(
+                    'required' => true,
+                    'validate_callback' => function( $param ) {
+                        return is_numeric( $param ) && absint( $param ) > 0;
+                    },
+                ),
+            ),
+        ));
         
         // Standings
         register_rest_route( 'competition/v1', '/standings', array(
@@ -73,7 +94,28 @@ class Competition_REST_API {
                 )
             )
         ));
-        
+
+        // Download standings as CSV.
+        register_rest_route( 'competition/v1', '/standings/export', array(
+            'methods'             => 'GET',
+            'callback'            => array( $this, 'export_standings' ),
+            'permission_callback' => '__return_true',
+            'args'                => array(
+                'cup_id' => array(
+                    'required'          => true,
+                    'validate_callback' => function( $param ) {
+                        return is_numeric( $param ) && absint( $param ) > 0;
+                    },
+                ),
+                'category' => array(
+                    'required'          => false,
+                    'validate_callback' => function( $param ) {
+                        return empty( $param ) || is_string( $param );
+                    },
+                ),
+            ),
+        ));
+
         // Athlete results
         register_rest_route( 'competition/v1', '/athlete/(?P<name>[a-zA-Z0-9\\s\\-\\ä\\ö\\å\\Ä\\Ö\\Å]+)', array(
             'methods'             => 'GET',
@@ -102,6 +144,15 @@ class Competition_REST_API {
             'permission_callback' => function() {
                 return current_user_can( 'manage_options' );
             }
+        ) );
+
+        // Adjust result points
+        register_rest_route( 'competition/v1', '/results/(?P<id>\d+)/adjustment', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'adjust_result_points' ),
+            'permission_callback' => function() {
+                return current_user_can( 'manage_options' );
+            },
         ) );
         
         // Save cup
@@ -205,11 +256,22 @@ class Competition_REST_API {
         $scoring_table = ! empty( $cup['scoring_table'] ) 
             ? json_decode( $cup['scoring_table'], true ) 
             : array(
-                1 => 100,
-                2 => 85,
-                3 => 75,
-                4 => 65,
-                5 => 55
+                1 => 30,
+                2 => 25,
+                3 => 21,
+                4 => 18,
+                5 => 16,
+                6 => 14,
+                7 => 12,
+                8 => 10,
+                9 => 8,
+                10 => 7,
+                11 => 6,
+                12 => 5,
+                13 => 4,
+                14 => 3,
+                15 => 2,
+                16 => 1,
             );
         
         // Calculate standings
@@ -229,7 +291,46 @@ class Competition_REST_API {
             )
         ));
     }
-    
+
+    /**
+     * Export the same standings data as a downloadable CSV file.
+     */
+    public function export_standings( $request ) {
+        $response = $this->get_standings( $request );
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $payload = $response->get_data();
+        if ( empty( $payload['success'] ) ) {
+            return new WP_Error( 'standings_export_failed', $payload['message'] ?? 'Standings could not be exported.', array( 'status' => 400 ) );
+        }
+
+        $stream = fopen( 'php://temp', 'r+' );
+        fputcsv( $stream, array( 'Rank', 'Category', 'Athlete', 'Club', '1st', '2nd', '3rd', 'Total' ) );
+        foreach ( $payload['data']['standings'] as $standing ) {
+            $counts = $standing['place_counts'] ?? array();
+            fputcsv( $stream, array(
+                $standing['rank'] ?? '',
+                $standing['category'] ?? '',
+                $standing['athlete_name'] ?? '',
+                $standing['club'] ?? '',
+                $counts[1] ?? 0,
+                $counts[2] ?? 0,
+                $counts[3] ?? 0,
+                $standing['total_score'] ?? 0,
+            ) );
+        }
+        rewind( $stream );
+        $csv = stream_get_contents( $stream );
+        fclose( $stream );
+
+        $response = new WP_REST_Response( "\xEF\xBB\xBF" . $csv, 200 );
+        $response->header( 'Content-Type', 'text/csv; charset=utf-8' );
+        $response->header( 'Content-Disposition', 'attachment; filename="competition-standings.csv"' );
+        return $response;
+    }
+
     /**
      * GET /athlete/{name}?cup_id=X
      * Get athlete results
@@ -250,15 +351,7 @@ class Competition_REST_API {
         
         $db = new Competition_Database();
         
-        if ( $cup_id > 0 ) {
-            $results = $db->get_athlete_results( $athlete_name, $cup_id );
-        } else {
-            // Get all results for athlete
-            global $wpdb;
-            $table = $wpdb->prefix . 'competition_results';
-            $sql = "SELECT * FROM $table WHERE athlete_name = %s ORDER BY event_date DESC";
-            $results = $wpdb->get_results( $wpdb->prepare( $sql, $athlete_name ), ARRAY_A );
-        }
+        $results = $db->get_athlete_results( $athlete_name, $cup_id );
         
         return rest_ensure_response( array(
             'success' => true,
@@ -274,21 +367,24 @@ class Competition_REST_API {
      */
     public function save_season( $request ) {
         $data = $request->get_json_params();
+        $year = absint( $data['year'] ?? 0 );
         $name = sanitize_text_field( $data['name'] ?? '' );
 
-        if ( empty( $name ) ) {
+        if ( $year < 1 && preg_match( '/\b(19|20)\d{2}\b/', $name, $matches ) ) {
+            $year = absint( $matches[0] );
+        }
+
+        if ( $year < 1 ) {
             return new WP_Error(
-                'missing_season_name',
-                'Season name is required.',
+                'missing_season_year',
+                'A valid season year is required.',
                 array( 'status' => 400 )
             );
         }
 
         $season = array(
-            'name'       => $name,
-            'start_date' => sanitize_text_field( $data['start_date'] ?? '' ),
-            'end_date'   => sanitize_text_field( $data['end_date'] ?? '' ),
-            'status'     => sanitize_key( $data['status'] ?? 'active' ),
+            'year'   => $year,
+            'status' => sanitize_key( $data['status'] ?? 'active' ),
         );
 
         if ( ! empty( $data['id'] ) ) {
@@ -400,5 +496,31 @@ class Competition_REST_API {
         }
 
         return rest_ensure_response( array( 'success' => true ) );
+    }
+
+    /**
+     * Apply and record a manual point adjustment.
+     */
+    public function adjust_result_points( $request ) {
+        $data   = $request->get_json_params();
+        $points = isset( $data['adjusted_points'] ) ? intval( $data['adjusted_points'] ) : -1;
+        $reason = sanitize_textarea_field( $data['adjustment_reason'] ?? '' );
+
+        if ( $points < 0 || empty( $reason ) ) {
+            return new WP_Error(
+                'invalid_point_adjustment',
+                'Adjusted points and an adjustment reason are required.',
+                array( 'status' => 400 )
+            );
+        }
+
+        $db     = new Competition_Database();
+        $result = $db->adjust_result_points( absint( $request['id'] ), $points, $reason, get_current_user_id() );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        return rest_ensure_response( array( 'success' => true, 'data' => $result ) );
     }
 }

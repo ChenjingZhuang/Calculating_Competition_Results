@@ -103,7 +103,7 @@
     <h2>📅 Season Management</h2>
     <table class="table-container">
         <thead>
-            <tr><th>ID</th><th>Season Name</th><th>Cup</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>ID</th><th>Season Name</th><th>Year</th><th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody id="seasons-body"><tr><td colspan="5">Loading...</td></tr></tbody>
     </table>
@@ -125,7 +125,7 @@
     <h2>📤 Upload Results (Excel)</h2>
     <div class="upload-area">
         <p style="font-size:18px; color:#999;">📁 Drag &amp; drop your Excel file here, or click to browse</p>
-        <input type="number" id="upload-cup-id" min="1" placeholder="Cup ID" aria-label="Cup ID" style="margin-top:10px;">
+        <select id="upload-competition-id" aria-label="Competition" style="margin-top:10px;"><option value="">Select competition</option></select>
         <input type="file" id="excel-file" accept=".xlsx,.xls" style="margin-top:10px;">
         <br>
         <button class="btn-add" id="upload-btn" type="button" style="margin-top:15px;">Upload &amp; Parse</button>
@@ -174,16 +174,40 @@
                     renderCups(Array.isArray(payload.data) ? payload.data : []);
                     document.getElementById('cup-count').textContent =
                         Array.isArray(payload.data) ? payload.data.length : 0;
+                    if (Array.isArray(payload.data) && payload.data.length) {
+                        loadCompetitions(payload.data[0].id);
+                    }
                 })
                 .catch(function() { cupsBody.innerHTML = '<tr><td colspan="4">Could not load cups.</td></tr>'; });
         }
 
+        function loadCompetitions(cupId) {
+            const competitionSelect = document.getElementById('upload-competition-id');
+            competitionSelect.innerHTML = '<option value="">Loading competitions...</option>';
+            fetch(apiBase + '/competitions?cup_id=' + encodeURIComponent(cupId))
+                .then(function(response) {
+                    if (!response.ok) throw new Error('Competitions request failed');
+                    return response.json();
+                })
+                .then(function(payload) {
+                    const competitions = Array.isArray(payload.data) ? payload.data : [];
+                    competitionSelect.innerHTML = competitions.length
+                        ? competitions.map(function(competition) {
+                            return '<option value="' + escapeHtml(competition.id) + '">' + escapeHtml(competition.name) + ' (' + escapeHtml(competition.event_date) + ')</option>';
+                        }).join('')
+                        : '<option value="">No competitions found</option>';
+                })
+                .catch(function() {
+                    competitionSelect.innerHTML = '<option value="">Could not load competitions</option>';
+                });
+        }
+
         uploadButton.addEventListener('click', function() {
             const fileInput = document.getElementById('excel-file');
-            const cupId = document.getElementById('upload-cup-id').value;
+            const competitionId = document.getElementById('upload-competition-id').value;
 
-            if (!fileInput.files.length || !cupId) {
-                uploadStatus.textContent = 'Select an Excel file and enter a cup ID.';
+            if (!fileInput.files.length || !competitionId) {
+                uploadStatus.textContent = 'Select an Excel file and enter a competition ID.';
                 return;
             }
 
@@ -195,7 +219,7 @@
             const formData = new FormData();
             formData.append('action', 'competition_import_results');
             formData.append('nonce', window.competitionAdmin.nonce);
-            formData.append('cup_id', cupId);
+            formData.append('competition_id', competitionId);
             formData.append('excel_file', fileInput.files[0]);
 
             uploadButton.disabled = true;
@@ -205,7 +229,10 @@
                 method: 'POST',
                 body: formData
             })
-            .then(function(response) { return response.json(); })
+            .then(function(response) {
+                if (!response.ok) throw new Error('Upload request failed.');
+                return response.json();
+            })
             .then(function(payload) {
                 if (!payload.success) {
                     throw new Error(payload.data && payload.data.message
@@ -230,7 +257,7 @@
                 document.getElementById('season-count').textContent = seasons.length;
                 seasonsBody.innerHTML = seasons.length ? seasons.map(function(season) {
                     return '<tr><td>' + escapeHtml(season.id) + '</td><td>' + escapeHtml(season.name) + '</td><td>' +
-                        escapeHtml(season.name || '-') + '</td><td>' + escapeHtml(season.status) + '</td><td>' +
+                        escapeHtml(season.year || '-') + '</td><td>' + escapeHtml(season.status) + '</td><td>' +
                         '<a href="admin.php?page=competition-season&action=edit&id=' + encodeURIComponent(season.id) + '" class="btn-edit">Edit</a> ' +
                         '<button class="btn-delete" data-delete-url="' + apiBase + '/seasons/' + encodeURIComponent(season.id) + '">Delete</button></td></tr>';
                 }).join('') : '<tr><td colspan="5">No active seasons found.</td></tr>';
