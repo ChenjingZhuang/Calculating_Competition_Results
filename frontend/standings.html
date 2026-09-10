@@ -59,152 +59,88 @@
     </style>
 </head>
 <body>
+    <h1 id="standings-title">Competition Standings</h1>
+    <p id="standings-status" class="mock-note">Loading competitions...</p>
+    <p class="text-center">
+        <label for="cup-select">Cup</label>
+        <select id="cup-select"></select>
+        <label for="category-input">Category</label>
+        <input id="category-input" type="text" placeholder="All categories">
+        <button id="load-standings" type="button">Load standings</button>
+        <button id="download-standings" type="button">Download CSV</button>
+    </p>
+    <div id="standings-content"></div>
 
-    <h1>XCO Cup 2026</h1>
+    <script>
+        (function () {
+            const apiBase = window.competitionAdmin && window.competitionAdmin.restUrl
+                ? window.competitionAdmin.restUrl
+                : '/wp-json/competition/v1';
+            const requestHeaders = window.competitionAdmin && window.competitionAdmin.restNonce
+                ? { 'X-WP-Nonce': window.competitionAdmin.restNonce }
+                : {};
+            const cupSelect = document.getElementById('cup-select');
+            const categoryInput = document.getElementById('category-input');
+            const status = document.getElementById('standings-status');
+            const content = document.getElementById('standings-content');
 
-    <!-- ===== N 19 ===== -->
-    <h2>N 19 (Women Under 19)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Iida</td><td>Paavola</td><td>GIF/Prorog</td><td>30</td><td>30</td><td>25</td><td>85</td></tr>
-            <tr><td>2</td><td>Stella</td><td>Suuronen</td><td>PoTa</td><td></td><td></td><td>30</td><td>30</td></tr>
-        </tbody>
-    </table>
+            function escapeHtml(value) {
+                return String(value ?? '').replace(/[&<>'"]/g, function (character) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character];
+                });
+            }
 
-    <!-- ===== N Elite ===== -->
-    <h2>N Elite (Women Elite)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Sini</td><td>Alusniemi</td><td>JyPS/Augment Sport</td><td></td><td>30</td><td></td><td>30</td></tr>
-            <tr><td>1</td><td>Henna-Mari</td><td>Havana</td><td>OTC</td><td></td><td></td><td>30</td><td>30</td></tr>
-            <tr><td>3</td><td>Anna</td><td>Ruokoja</td><td>RideEp</td><td></td><td></td><td>25</td><td>25</td></tr>
-        </tbody>
-    </table>
+            function renderStandings(payload) {
+                const rows = payload.data && Array.isArray(payload.data.standings) ? payload.data.standings : [];
+                const cup = payload.data && payload.data.cup ? payload.data.cup : {};
+                document.getElementById('standings-title').textContent = cup.name || 'Competition Standings';
+                if (!rows.length) {
+                    content.innerHTML = '<p class="mock-note">No standings found.</p>';
+                    return;
+                }
+                content.innerHTML = '<table class="standings-table"><thead><tr><th>Rank</th><th>Category</th><th>Athlete</th><th>Club</th><th>1st</th><th>2nd</th><th>3rd</th><th>Total</th></tr></thead><tbody>' +
+                    rows.map(function (row) {
+                        const counts = row.place_counts || {};
+                        return '<tr><td>' + escapeHtml(row.rank) + '</td><td>' + escapeHtml(row.category || '') + '</td><td>' + escapeHtml(row.athlete_name) + '</td><td>' + escapeHtml(row.club || '') + '</td><td>' + escapeHtml(counts[1] || 0) + '</td><td>' + escapeHtml(counts[2] || 0) + '</td><td>' + escapeHtml(counts[3] || 0) + '</td><td>' + escapeHtml(row.total_score) + '</td></tr>';
+                    }).join('') + '</tbody></table>';
+            }
 
-    <!-- ===== N 40 ===== -->
-    <h2>N 40 (Women 40+)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Suvi</td><td>Perälä</td><td>KorsKa</td><td>30</td><td></td><td></td><td>30</td></tr>
-            <tr><td>1</td><td>Tytti</td><td>Kaijanen</td><td>KemPy</td><td></td><td></td><td>30</td><td>30</td></tr>
-        </tbody>
-    </table>
+            function loadStandings() {
+                const cupId = cupSelect.value;
+                if (!cupId) return;
+                status.textContent = 'Loading standings...';
+                let url = apiBase + '/standings?cup_id=' + encodeURIComponent(cupId);
+                if (categoryInput.value.trim()) url += '&category=' + encodeURIComponent(categoryInput.value.trim());
+                fetch(url, { headers: requestHeaders })
+                    .then(function (response) { if (!response.ok) throw new Error('Standings request failed.'); return response.json(); })
+                    .then(function (payload) { if (payload.success === false) throw new Error(payload.message || 'Standings request failed.'); renderStandings(payload); status.textContent = 'Connected to competition API'; })
+                    .catch(function (error) { status.textContent = error.message; content.innerHTML = ''; });
+            }
 
-    <!-- ===== N 50 ===== -->
-    <h2>N 50 (Women 50+)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Hanna</td><td>Hernetkoski</td><td>RaKe</td><td>30</td><td>30</td><td>30</td><td>90</td></tr>
-        </tbody>
-    </table>
+            fetch(apiBase + '/seasons', { headers: requestHeaders })
+                .then(function (response) { if (!response.ok) throw new Error('Could not load seasons.'); return response.json(); })
+                .then(function (seasonPayload) {
+                    const seasons = seasonPayload.data || [];
+                    if (!seasons.length) throw new Error('No seasons found.');
+                    return Promise.all(seasons.map(function (season) {
+                        return fetch(apiBase + '/cups?season_id=' + encodeURIComponent(season.id), { headers: requestHeaders }).then(function (response) { return response.json(); });
+                    }));
+                })
+                .then(function (cupPayloads) {
+                    const cups = cupPayloads.reduce(function (all, payload) { return all.concat(payload.data || []); }, []);
+                    cupSelect.innerHTML = cups.map(function (cup) { return '<option value="' + escapeHtml(cup.id) + '">' + escapeHtml(cup.name) + '</option>'; }).join('');
+                    loadStandings();
+                })
+                .catch(function (error) { status.textContent = error.message; });
 
-    <!-- ===== MU 19 ===== -->
-    <h2>MU 19 (Men Under 19)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Veikka</td><td>Niku</td><td>KemPy</td><td>30</td><td>30</td><td>30</td><td>90</td></tr>
-            <tr><td>2</td><td>Isac</td><td>Granberc</td><td>GIF/Prorog</td><td>25</td><td>25</td><td>18</td><td>68</td></tr>
-            <tr><td>3</td><td>Martin</td><td>Kullberg</td><td>Pyöräkauppa.fi</td><td></td><td></td><td>25</td><td>25</td></tr>
-            <tr><td>4</td><td>Kuzma</td><td>Kornijenko</td><td>CCH</td><td>21</td><td></td><td></td><td>21</td></tr>
-            <tr><td>4</td><td>Kasperi</td><td>Nieminen</td><td>Rake</td><td></td><td></td><td>21</td><td>21</td></tr>
-        </tbody>
-    </table>
-
-    <!-- ===== M Elite ===== -->
-    <h2>M Elite (Men Elite)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Tomi</td><td>Kaurahuhti</td><td>CC Ilves/Toni Tähti training</td><td>21</td><td>30</td><td></td><td>51</td></tr>
-            <tr><td>1</td><td>Sakari</td><td>Lehtinen</td><td>HyPy</td><td></td><td>21</td><td>30</td><td>51</td></tr>
-            <tr><td>3</td><td>Joni</td><td>Savaste</td><td>Team EVOC / RaKe</td><td>25</td><td>25</td><td></td><td>50</td></tr>
-            <tr><td>4</td><td>Väinö</td><td>Kangasluoma</td><td>JurVo/Prorog racing team</td><td>12</td><td>12</td><td>18</td><td>42</td></tr>
-            <tr><td>5</td><td>Jirka</td><td>Oja</td><td>GIF</td><td></td><td>10</td><td>25</td><td>35</td></tr>
-            <tr><td>6</td><td>Pekka</td><td>Nieminen</td><td>IU/Bike@Sport Service</td><td>16</td><td>16</td><td></td><td>32</td></tr>
-            <tr><td>7</td><td>Elias</td><td>Eskelinen</td><td>RaKe</td><td>30</td><td></td><td></td><td>30</td></tr>
-            <tr><td>8</td><td>Aatu</td><td>Lipponen</td><td>OTC</td><td></td><td></td><td>21</td><td>21</td></tr>
-            <tr><td>9</td><td>Mikhail</td><td>Utkin</td><td>Akilles</td><td>18</td><td></td><td></td><td>18</td></tr>
-            <tr><td>9</td><td>Oskari</td><td>Heinikainen</td><td>LaPy</td><td></td><td>18</td><td></td><td>18</td></tr>
-            <tr><td>11</td><td>Joonas</td><td>Purtola</td><td>KemPy</td><td></td><td></td><td>16</td><td>16</td></tr>
-            <tr><td>12</td><td>Viljami</td><td>Jalonen</td><td>KorsKa</td><td></td><td>14</td><td></td><td>14</td></tr>
-            <tr><td>12</td><td>Samuli</td><td>Visuri</td><td>CCH</td><td>14</td><td></td><td></td><td>14</td></tr>
-            <tr><td>12</td><td>Niko</td><td>Juntunen</td><td>HyPy</td><td></td><td></td><td>14</td><td>14</td></tr>
-            <tr><td>15</td><td>Lauri</td><td>Väisänen</td><td>KaiPy</td><td></td><td></td><td>12</td><td>12</td></tr>
-            <tr><td>16</td><td>Niko</td><td>Juntunen</td><td>HyPy</td><td>10</td><td></td><td></td><td>10</td></tr>
-            <tr><td>17</td><td>Oiva</td><td>Kaapu</td><td>VlkMTB</td><td></td><td>8</td><td></td><td>8</td></tr>
-            <tr><td>17</td><td>Kalle</td><td>Kuusniemi</td><td>HyPy</td><td>8</td><td></td><td></td><td>8</td></tr>
-            <tr><td>19</td><td>Lauri</td><td>Kairikko</td><td>KoiIs</td><td>7</td><td></td><td></td><td>7</td></tr>
-        </tbody>
-    </table>
-
-    <!-- ===== M 40 ===== -->
-    <h2>M 40 (Men 40+)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Juhani</td><td>Timmerbacka</td><td>OTC</td><td></td><td>25</td><td>10</td><td>35</td></tr>
-            <tr><td>2</td><td>Aki</td><td>Pulkkinen</td><td>GIF</td><td></td><td>30</td><td></td><td>30</td></tr>
-            <tr><td>2</td><td>Pekka</td><td>Nieminen</td><td>IU</td><td></td><td></td><td>30</td><td>30</td></tr>
-            <tr><td>4</td><td>Juhani</td><td>Havana</td><td>OTC</td><td></td><td></td><td>25</td><td>25</td></tr>
-            <tr><td>5</td><td>Juho</td><td>Kämäräinen</td><td>OTC</td><td></td><td></td><td>21</td><td>21</td></tr>
-            <tr><td>6</td><td>Arto</td><td>Tikkala</td><td>Team Evoc</td><td></td><td></td><td>18</td><td>18</td></tr>
-            <tr><td>7</td><td>Juhani</td><td>Vähämetsä</td><td>OPP</td><td></td><td></td><td>16</td><td>16</td></tr>
-            <tr><td>8</td><td>Ilkka</td><td>Möttönen</td><td>OTC</td><td></td><td></td><td>14</td><td>14</td></tr>
-            <tr><td>9</td><td>Mikko</td><td>Vainio</td><td>RideEp</td><td></td><td></td><td>12</td><td>12</td></tr>
-        </tbody>
-    </table>
-
-    <!-- ===== M 50 ===== -->
-    <h2>M 50 (Men 50+)</h2>
-    <table class="standings-table">
-        <thead>
-            <tr>
-                <th>Rank</th><th>First Name</th><th>Last Name</th><th>Club</th><th>1/8</th><th>2/8</th><th>3/8</th><th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td>1</td><td>Toni</td><td>Salojärvi</td><td>RaKe</td><td>30</td><td></td><td></td><td>30</td></tr>
-            <tr><td>1</td><td>Marko</td><td>Anttila</td><td>HyPy</td><td></td><td>30</td><td></td><td>30</td></tr>
-            <tr><td>1</td><td>Arto</td><td>Hakala</td><td>VlkMTB</td><td></td><td></td><td>30</td><td>30</td></tr>
-            <tr><td>4</td><td>Mikko</td><td>Kleemola</td><td>LaPy</td><td>25</td><td></td><td></td><td>25</td></tr>
-            <tr><td>4</td><td>Marko</td><td>Viik</td><td>PP Racing</td><td></td><td></td><td>25</td><td>25</td></tr>
-            <tr><td>6</td><td>Jaakko</td><td>Mursu</td><td>JoesPy</td><td></td><td></td><td>21</td><td>21</td></tr>
-            <tr><td>7</td><td>Jani</td><td>Hämäläinen</td><td>PP Racing</td><td></td><td></td><td>18</td><td>18</td></tr>
-        </tbody>
-    </table>
-
+            document.getElementById('load-standings').addEventListener('click', loadStandings);
+            document.getElementById('download-standings').addEventListener('click', function () {
+                if (!cupSelect.value) return;
+                let url = apiBase + '/standings/export?cup_id=' + encodeURIComponent(cupSelect.value);
+                if (categoryInput.value.trim()) url += '&category=' + encodeURIComponent(categoryInput.value.trim());
+                window.location.href = url;
+            });
+        }());
+    </script>
 </body>
 </html>

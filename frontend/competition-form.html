@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Competition Form</title>
+    <style>
+    .form-container { max-width:600px; margin:0 auto; background:#f9f9f9; padding:30px; border-radius:8px; }
+    .form-container label { display:block; margin-bottom:8px; font-weight:bold; }
+    .form-container input, .form-container select { width:100%; padding:10px; margin-bottom:20px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; }
+    .btn-save { background:#007cba; color:white; border:none; padding:10px 30px; border-radius:4px; cursor:pointer; }
+    .btn-save:hover { background:#005a87; }
+    .mock-note { color:#999; font-style:italic; text-align:center; margin-top:30px; }
+    h1 { text-align:center; }
+</style>
+</head>
+<body>
+<h1 id="form-title">Add Competition</h1>
+
+<div class="form-container">
+    <form id="competition-form">
+        <label for="competition-name">Competition Name</label>
+        <input type="text" id="competition-name" required>
+
+        <label for="cup">Cup</label>
+        <select id="cup" required></select>
+
+        <label for="event-date">Event Date</label>
+        <input type="date" id="event-date" required>
+
+        <label for="location">Location</label>
+        <input type="text" id="location">
+
+        <label for="result-link">Result Link</label>
+        <input type="url" id="result-link">
+
+        <label for="status">Status</label>
+        <select id="status">
+            <option value="Upcoming">Upcoming</option>
+            <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+        </select>
+
+        <button type="submit" class="btn-save" id="save-btn">Save Competition</button>
+    </form>
+    <p id="form-status" class="mock-note"></p>
+</div>
+
+<script>
+(function () {
+    const apiBase = window.competitionAdmin && window.competitionAdmin.restUrl
+        ? window.competitionAdmin.restUrl
+        : '/wp-json/competition/v1';
+    const params = new URLSearchParams(window.location.search);
+    const competitionId = params.get('id');
+    const requestedCupId = params.get('cup_id');
+    const cupSelect = document.getElementById('cup');
+    const form = document.getElementById('competition-form');
+    const saveButton = document.getElementById('save-btn');
+    const status = document.getElementById('form-status');
+
+    function loadCups() {
+        return fetch(apiBase + '/seasons?status=all')
+            .then(function (response) {
+                if (!response.ok) throw new Error('Could not load seasons.');
+                return response.json();
+            })
+            .then(function (seasonPayload) {
+                const seasons = seasonPayload.data || [];
+                return Promise.all(seasons.map(function (season) {
+                    return fetch(apiBase + '/cups?season_id=' + encodeURIComponent(season.id))
+                        .then(function (response) { return response.json(); });
+                }));
+            })
+            .then(function (cupPayloads) {
+                const cups = cupPayloads.reduce(function (all, payload) {
+                    return all.concat(payload.data || []);
+                }, []);
+                cupSelect.innerHTML = cups.map(function (cup) {
+                    return '<option value="' + String(cup.id) + '">' + String(cup.name) + '</option>';
+                }).join('');
+                if (!cups.length) throw new Error('Create a cup before creating a competition.');
+                if (requestedCupId) cupSelect.value = requestedCupId;
+            });
+    }
+
+    function loadCompetition() {
+        if (!competitionId) return Promise.resolve();
+        return fetch(apiBase + '/competitions?cup_id=' + encodeURIComponent(cupSelect.value))
+            .then(function (response) { return response.json(); })
+            .then(function (payload) {
+                const competition = (payload.data || []).find(function (item) {
+                    return String(item.id) === String(competitionId);
+                });
+                if (!competition) throw new Error('Competition could not be found.');
+                document.getElementById('competition-name').value = competition.name || '';
+                document.getElementById('event-date').value = competition.event_date || '';
+                document.getElementById('location').value = competition.location || '';
+                document.getElementById('result-link').value = competition.result_link || '';
+                document.getElementById('status').value = competition.status || 'Upcoming';
+                document.getElementById('form-title').textContent = 'Edit Competition';
+            });
+    }
+
+    loadCups().then(loadCompetition).catch(function (error) {
+        status.textContent = error.message;
+        saveButton.disabled = true;
+    });
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        saveButton.disabled = true;
+        saveButton.textContent = 'Saving...';
+        const competition = {
+            name: document.getElementById('competition-name').value.trim(),
+            cup_id: Number(cupSelect.value),
+            event_date: document.getElementById('event-date').value,
+            location: document.getElementById('location').value.trim(),
+            result_link: document.getElementById('result-link').value.trim(),
+            status: document.getElementById('status').value
+        };
+        if (competitionId) competition.id = Number(competitionId);
+
+        fetch(apiBase + '/competitions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': window.competitionAdmin ? window.competitionAdmin.restNonce : ''
+            },
+            body: JSON.stringify(competition)
+        })
+            .then(function (response) {
+                return response.json().then(function (payload) {
+                    if (!response.ok || payload.success === false) {
+                        throw new Error(payload.message || 'Could not save competition.');
+                    }
+                    return payload;
+                });
+            })
+            .then(function () { window.location.href = 'admin.php?page=competition-results'; })
+            .catch(function (error) {
+                status.textContent = error.message;
+                saveButton.disabled = false;
+                saveButton.textContent = 'Save Competition';
+            });
+    });
+}());
+</script>
+</body>
+</html>

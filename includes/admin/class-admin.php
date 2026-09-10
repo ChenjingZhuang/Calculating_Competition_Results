@@ -62,7 +62,9 @@ class Competition_Admin {
      * AJAX: Import results
      */
     public function ajax_import_results() {
-        check_ajax_referer( 'competition_admin_nonce', 'nonce' );
+        if ( ! check_ajax_referer( 'competition_admin_nonce', 'nonce', false ) ) {
+            wp_send_json_error( array( 'message' => 'The admin session has expired. Reload the page and try again.' ), 403 );
+        }
         
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_send_json_error( array( 'message' => 'Permission denied' ) );
@@ -73,15 +75,27 @@ class Competition_Admin {
         }
         
         $file = $_FILES['excel_file'];
-        $cup_id = intval( $_POST['cup_id'] ?? 0 );
+        if ( UPLOAD_ERR_OK !== (int) ( $file['error'] ?? UPLOAD_ERR_NO_FILE ) ) {
+            $upload_errors = array(
+                UPLOAD_ERR_INI_SIZE   => 'The uploaded file exceeds the server upload limit.',
+                UPLOAD_ERR_FORM_SIZE  => 'The uploaded file exceeds the form upload limit.',
+                UPLOAD_ERR_PARTIAL    => 'The file upload was interrupted.',
+                UPLOAD_ERR_NO_FILE    => 'No file was uploaded.',
+                UPLOAD_ERR_NO_TMP_DIR => 'The server temporary upload directory is missing.',
+                UPLOAD_ERR_CANT_WRITE => 'The server could not write the uploaded file.',
+                UPLOAD_ERR_EXTENSION => 'A server extension stopped the file upload.',
+            );
+            wp_send_json_error( array( 'message' => $upload_errors[ (int) $file['error'] ] ?? 'The file upload failed.' ) );
+        }
+        $competition_id = intval( $_POST['competition_id'] ?? 0 );
         
-        if ( $cup_id <= 0 ) {
-            wp_send_json_error( array( 'message' => 'Invalid cup ID' ) );
+        if ( $competition_id <= 0 ) {
+            wp_send_json_error( array( 'message' => 'Invalid competition ID' ) );
         }
         
         // Import Excel
         $importer = new Competition_Excel_Importer();
-        $result = $importer->import( $file['tmp_name'], $cup_id );
+        $result = $importer->import( $file['tmp_name'], $competition_id );
         
         if ( is_wp_error( $result ) ) {
             wp_send_json_error( array( 'message' => $result->get_error_message() ) );
@@ -89,7 +103,18 @@ class Competition_Admin {
         
         // Save to database
         $db = new Competition_Database();
-        $inserted = $db->save_results( $result['results'] );
+        $inserted = $db->save_results(
+            $result['results'],
+            array(
+                'competition_id' => $competition_id,
+                'file_name' => $file['name'] ?? 'WordPress upload',
+                'failed_records' => count( $result['errors'] ?? array() ),
+            )
+        );
+
+        if ( is_wp_error( $inserted ) ) {
+            wp_send_json_error( array( 'message' => $inserted->get_error_message() ) );
+        }
         
         wp_send_json_success( array(
             'message' => sprintf( 'Imported %d results', $inserted ),

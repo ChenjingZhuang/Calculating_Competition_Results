@@ -20,26 +20,14 @@
 <h1 id="form-title">Add Season</h1>
 
 <div class="form-container">
-    <form id="season-form">        <input type="text" id="season-name" placeholder="e.g. 2027 XCO Cup">
-
-        <label>Cup</label>
-        <select id="cup">
-            <option>XCO Cup 2026</option>
-            <option>XCO Cup 2025</option>
-            <option>Create New Cup...</option>
-        </select>
-
-        <label>Start Date</label>
-        <input type="date" id="start-date">
-
-        <label>End Date</label>
-        <input type="date" id="end-date">
+    <form id="season-form">
+        <label for="season-year">Season Year</label>
+        <input type="number" id="season-year" min="1900" max="2200" placeholder="e.g. 2027" required>
 
         <label>Status</label>
         <select id="status">
-            <option>Active</option>
-            <option>Upcoming</option>
-            <option>Ended</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
         </select>
 
         <div class="text-center" style="margin-top:20px;">
@@ -58,10 +46,17 @@
 
     if (action === 'edit') {
         document.getElementById('form-title').textContent = '📝 Edit Season';
-        document.getElementById('season-name').value = '2026 XCO Cup';
-        document.getElementById('start-date').value = '2026-05-01';
-        document.getElementById('end-date').value = '2026-09-30';
-        document.getElementById('status').value = 'active';
+        fetch((window.competitionAdmin && window.competitionAdmin.restUrl
+            ? window.competitionAdmin.restUrl
+            : '/wp-json/competition/v1') + '/seasons?status=all')
+            .then(function(response) { return response.json(); })
+            .then(function(payload) {
+                const season = (payload.data || []).find(function(item) { return String(item.id) === String(seasonId); });
+                if (!season) throw new Error('Season could not be found.');
+                document.getElementById('season-year').value = season.year;
+                document.getElementById('status').value = season.status === 'active' ? 'active' : 'archived';
+            })
+            .catch(function(error) { alert(error.message); });
     } else {
         document.getElementById('form-title').textContent = '📝 Add Season';
     }
@@ -72,9 +67,7 @@
         saveButton.textContent = 'Saving...';
 
         const season = {
-            name: document.getElementById('season-name').value.trim(),
-            start_date: document.getElementById('start-date').value,
-            end_date: document.getElementById('end-date').value,
+            year: Number(document.getElementById('season-year').value),
             status: document.getElementById('status').value.toLowerCase()
         };
 

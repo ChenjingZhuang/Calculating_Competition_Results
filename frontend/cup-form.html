@@ -20,7 +20,7 @@
 <h1 id="form-title">🏆 Add Cup</h1>
 
 <div class="form-container">
-    <form onsubmit="alert('Save function will be available after backend integration.'); return false;">
+    <form id="cup-form">
         <label>Cup Name</label>
         <input type="text" id="cup-name" placeholder="e.g. XCO Cup 2027">
 
@@ -40,11 +40,13 @@
             <option>Custom</option>
         </select>
 
+        <label>Counted Events</label>
+        <input type="number" id="counted-events" min="1" value="3">
+
         <label>Status</label>
         <select id="status">
-            <option>Active</option>
-            <option>Upcoming</option>
-            <option>Ended</option>
+            <option value="draft">Draft</option>
+            <option value="active">Published</option>
         </select>
 
         <div class="text-center" style="margin-top:20px;">
@@ -57,15 +59,83 @@
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const action = urlParams.get('action');
+    const cupId = urlParams.get('id');
+    const apiBase = window.competitionAdmin && window.competitionAdmin.restUrl
+        ? window.competitionAdmin.restUrl
+        : '/wp-json/competition/v1';
+    const seasonSelect = document.getElementById('season');
+    const cupForm = document.getElementById('cup-form');
+    const saveButton = document.getElementById('save-btn');
 
-    if (action === 'edit') {
-        document.getElementById('form-title').textContent = '🏆 Edit Cup';
-        document.getElementById('cup-name').value = 'XCO Cup 2026';
-        document.getElementById('category').value = 'M Elite, N 19, N Elite, M 40, N 40, M 50, N 50, MU 19';
-        document.getElementById('status').value = 'Active';
-    } else {
-        document.getElementById('form-title').textContent = '🏆 Add Cup';
+    function loadSeasons() {
+        return fetch(apiBase + '/seasons?status=all')
+            .then(function(response) {
+                if (!response.ok) throw new Error('Could not load seasons.');
+                return response.json();
+            })
+            .then(function(payload) {
+                const seasons = payload.data || [];
+                seasonSelect.innerHTML = seasons.map(function(season) {
+                    return '<option value="' + season.id + '">' + season.name + '</option>';
+                }).join('');
+                if (!seasons.length) throw new Error('Create a season before creating a cup.');
+            });
     }
+
+    function loadCup() {
+        if (!cupId) return Promise.resolve();
+        return fetch(apiBase + '/cups?season_id=' + encodeURIComponent(seasonSelect.value))
+            .then(function(response) { return response.json(); })
+            .then(function(payload) {
+                const cup = (payload.data || []).find(function(item) { return String(item.id) === String(cupId); });
+                if (!cup) throw new Error('Cup could not be found.');
+                document.getElementById('cup-name').value = cup.name || '';
+                document.getElementById('counted-events').value = cup.counted_events_limit || 3;
+                document.getElementById('status').value = cup.status || 'draft';
+                document.getElementById('form-title').textContent = '🏆 Edit Cup';
+            });
+    }
+
+    loadSeasons().then(loadCup).catch(function(error) {
+        document.getElementById('form-title').textContent = error.message;
+        saveButton.disabled = true;
+    });
+
+    cupForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        saveButton.disabled = true;
+        saveButton.textContent = 'Saving...';
+
+        const cup = {
+            name: document.getElementById('cup-name').value.trim(),
+            season_id: Number(seasonSelect.value),
+            category: document.getElementById('category').value.trim(),
+            counted_events_limit: Number(document.getElementById('counted-events').value),
+            status: document.getElementById('status').value.toLowerCase()
+        };
+        if (cupId) cup.id = Number(cupId);
+
+        fetch(apiBase + '/cups', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': window.competitionAdmin ? window.competitionAdmin.restNonce : ''
+            },
+            body: JSON.stringify(cup)
+        })
+            .then(function(response) {
+                return response.json().then(function(payload) {
+                    if (!response.ok || payload.success === false) throw new Error(payload.message || 'Could not save cup.');
+                    return payload;
+                });
+            })
+            .then(function() { window.location.href = 'admin.php?page=competition-results'; })
+            .catch(function(error) {
+                alert(error.message);
+                saveButton.disabled = false;
+                saveButton.textContent = '💾 Save Changes';
+            });
+    });
 </script>
 </body>
 </html>
