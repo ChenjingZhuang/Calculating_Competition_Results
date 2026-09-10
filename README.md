@@ -288,7 +288,4 @@ Current MVP status:
 | Katherine |  |  |  |
 | Saku |  |  |  |
 
-## 11. Timeline
-
-[Provide a week-by-week or phase-by-phase schedule]
 
