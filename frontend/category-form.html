@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Categories</title>
+    <style>
+    .form-container { max-width:600px; margin:0 auto 30px auto; background:#f9f9f9; padding:30px; border-radius:8px; }
+    .form-container label { display:block; margin-bottom:8px; font-weight:bold; }
+    .form-container input, .form-container textarea { width:100%; padding:10px; margin-bottom:20px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; }
+    .btn-save { background:#007cba; color:white; border:none; padding:10px 30px; border-radius:4px; cursor:pointer; }
+    .btn-delete { background:#b32d2d; color:white; border:none; padding:4px 12px; border-radius:4px; cursor:pointer; }
+    .table-container { width:100%; border-collapse:collapse; background:white; border:1px solid #ccc; }
+    .table-container th, .table-container td { border:1px solid #ccc; padding:8px; text-align:center; }
+    .table-container th { background:#f2f2f2; }
+    .mock-note { color:#999; font-style:italic; text-align:center; }
+    h1, h2 { text-align:center; }
+</style>
+</head>
+<body>
+<h1>Categories</h1>
+<p class="mock-note">Categories are matched to the Excel file by name.</p>
+
+<div class="form-container">
+    <form id="category-form">
+        <label for="category-name">Category Name</label>
+        <input type="text" id="category-name" placeholder="e.g. M Elite" required>
+        <label for="category-description">Description</label>
+        <textarea id="category-description" rows="3"></textarea>
+        <button type="submit" class="btn-save" id="save-btn">Save Category</button>
+    </form>
+    <p id="form-status" class="mock-note"></p>
+</div>
+
+<h2>Existing Categories</h2>
+<table class="table-container">
+    <thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Actions</th></tr></thead>
+    <tbody id="categories-body"><tr><td colspan="4">Loading...</td></tr></tbody>
+</table>
+
+<script>
+(function () {
+    const apiBase = window.competitionAdmin && window.competitionAdmin.restUrl
+        ? window.competitionAdmin.restUrl
+        : '/wp-json/competition/v1';
+    const disciplineId = 1;
+    const form = document.getElementById('category-form');
+    const saveButton = document.getElementById('save-btn');
+    const formStatus = document.getElementById('form-status');
+    const categoriesBody = document.getElementById('categories-body');
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>'"]/g, function (character) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character];
+        });
+    }
+
+    function loadCategories() {
+        fetch(apiBase + '/categories?discipline_id=' + disciplineId)
+            .then(function (response) { if (!response.ok) throw new Error('Could not load categories.'); return response.json(); })
+            .then(function (payload) {
+                const categories = payload.data || [];
+                categoriesBody.innerHTML = categories.length ? categories.map(function (category) {
+                    return '<tr><td>' + escapeHtml(category.id) + '</td><td>' + escapeHtml(category.name) + '</td><td>' +
+                        escapeHtml(category.description) + '</td><td><button class="btn-delete" data-id="' + escapeHtml(category.id) + '">Delete</button></td></tr>';
+                }).join('') : '<tr><td colspan="4">No categories found.</td></tr>';
+            })
+            .catch(function (error) { categoriesBody.innerHTML = '<tr><td colspan="4">' + escapeHtml(error.message) + '</td></tr>'; });
+    }
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        saveButton.disabled = true;
+        formStatus.textContent = 'Saving...';
+        fetch(apiBase + '/categories', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-WP-Nonce': window.competitionAdmin ? window.competitionAdmin.restNonce : ''
+            },
+            body: JSON.stringify({
+                discipline_id: disciplineId,
+                name: document.getElementById('category-name').value.trim(),
+                description: document.getElementById('category-description').value.trim()
+            })
+        })
+            .then(function (response) { return response.json().then(function (payload) {
+                if (!response.ok || payload.success === false) throw new Error(payload.message || 'Category could not be saved.');
+                return payload;
+            }); })
+            .then(function () {
+                form.reset();
+                formStatus.textContent = 'Category saved.';
+                loadCategories();
+            })
+            .catch(function (error) { formStatus.textContent = error.message; })
+            .finally(function () { saveButton.disabled = false; });
+    });
+
+    categoriesBody.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-id]');
+        if (!button || !confirm('Delete this category?')) return;
+        fetch(apiBase + '/categories/' + encodeURIComponent(button.dataset.id), {
+            method: 'DELETE',
+            headers: { 'X-WP-Nonce': window.competitionAdmin ? window.competitionAdmin.restNonce : '' }
+        })
+            .then(function (response) { return response.json().then(function (payload) {
+                if (!response.ok || payload.success === false) throw new Error(payload.message || 'Category could not be deleted.');
+            }); })
+            .then(loadCategories)
+            .catch(function (error) { formStatus.textContent = error.message; });
+    });
+
+    loadCategories();
+}());
+</script>
+</body>
+</html>

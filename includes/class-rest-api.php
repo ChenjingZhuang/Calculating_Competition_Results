@@ -73,6 +73,52 @@ class Competition_REST_API {
                 ),
             ),
         ));
+
+        register_rest_route( 'competition/v1', '/competitions', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'save_competition' ),
+            'permission_callback' => function() {
+                return current_user_can( 'manage_options' );
+            },
+        ));
+
+        register_rest_route( 'competition/v1', '/competitions/(?P<id>\d+)', array(
+            'methods'             => 'DELETE',
+            'callback'            => array( $this, 'delete_competition' ),
+            'permission_callback' => function() {
+                return current_user_can( 'manage_options' );
+            },
+        ));
+
+        register_rest_route( 'competition/v1', '/categories', array(
+            'methods' => 'GET',
+            'callback' => array( $this, 'get_categories' ),
+            'permission_callback' => '__return_true',
+            'args' => array(
+                'discipline_id' => array( 'required' => true, 'validate_callback' => function( $param ) { return is_numeric( $param ) && absint( $param ) > 0; } ),
+            ),
+        ));
+
+        register_rest_route( 'competition/v1', '/categories', array(
+            'methods' => 'POST',
+            'callback' => array( $this, 'save_category' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
+        register_rest_route( 'competition/v1', '/categories/(?P<id>\d+)', array(
+            'methods' => 'DELETE',
+            'callback' => array( $this, 'delete_category' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+        ));
+
+        register_rest_route( 'competition/v1', '/results', array(
+            'methods' => 'GET',
+            'callback' => array( $this, 'get_competition_results' ),
+            'permission_callback' => function() { return current_user_can( 'manage_options' ); },
+            'args' => array(
+                'competition_id' => array( 'required' => true, 'validate_callback' => function( $param ) { return is_numeric( $param ) && absint( $param ) > 0; } ),
+            ),
+        ));
         
         // Standings
         register_rest_route( 'competition/v1', '/standings', array(
@@ -306,11 +352,11 @@ class Competition_REST_API {
             return new WP_Error( 'standings_export_failed', $payload['message'] ?? 'Standings could not be exported.', array( 'status' => 400 ) );
         }
 
-        $stream = fopen( 'php://temp', 'r+' );
-        fputcsv( $stream, array( 'Rank', 'Category', 'Athlete', 'Club', '1st', '2nd', '3rd', 'Total' ) );
+        $csv_rows = array();
+        $csv_rows[] = array( 'Rank', 'Category', 'Athlete', 'Club', '1st', '2nd', '3rd', 'Total' );
         foreach ( $payload['data']['standings'] as $standing ) {
             $counts = $standing['place_counts'] ?? array();
-            fputcsv( $stream, array(
+            $csv_rows[] = array(
                 $standing['rank'] ?? '',
                 $standing['category'] ?? '',
                 $standing['athlete_name'] ?? '',
@@ -319,11 +365,15 @@ class Competition_REST_API {
                 $counts[2] ?? 0,
                 $counts[3] ?? 0,
                 $standing['total_score'] ?? 0,
-            ) );
+            );
         }
-        rewind( $stream );
-        $csv = stream_get_contents( $stream );
-        fclose( $stream );
+
+        $csv_lines = array_map( static function ( $row ) {
+            return implode( ';', array_map( static function ( $value ) {
+                return '"' . str_replace( '"', '""', (string) $value ) . '"';
+            }, $row ) );
+        }, $csv_rows );
+        $csv = implode( "\r\n", $csv_lines ) . "\r\n";
 
         $response = new WP_REST_Response( "\xEF\xBB\xBF" . $csv, 200 );
         $response->header( 'Content-Type', 'text/csv; charset=utf-8' );
@@ -463,6 +513,111 @@ class Competition_REST_API {
     }
 
     /**
+     * Save competition.
+     */
+    public function save_competition( $request ) {
+        $data = $request->get_json_params();
+        $name = sanitize_text_field( $data['name'] ?? '' );
+        $cup_id = absint( $data['cup_id'] ?? 0 );
+        $event_date = sanitize_text_field( $data['event_date'] ?? '' );
+        $status = sanitize_text_field( $data['status'] ?? 'Upcoming' );
+
+        if ( empty( $name ) || ! $cup_id || empty( $event_date ) ) {
+            return new WP_Error( 'invalid_competition', 'Competition name, cup and event date are required.', array( 'status' => 400 ) );
+        }
+
+        $date = DateTime::createFromFormat( 'Y-m-d', $event_date );
+        if ( ! $date || $date->format( 'Y-m-d' ) !== $event_date ) {
+            return new WP_Error( 'invalid_competition_date', 'A valid event date is required.', array( 'status' => 400 ) );
+        }
+
+        if ( ! in_array( $status, array( 'Upcoming', 'Completed', 'Cancelled' ), true ) ) {
+            return new WP_Error( 'invalid_competition_status', 'Invalid competition status.', array( 'status' => 400 ) );
+        }
+
+        $db = new Competition_Database();
+        if ( ! $db->get_cup( $cup_id ) ) {
+            return new WP_Error( 'cup_not_found', 'The selected cup was not found.', array( 'status' => 400 ) );
+        }
+
+        $competition = array(
+            'name'        => $name,
+            'cup_id'      => $cup_id,
+            'event_date'  => $event_date,
+            'location'    => $data['location'] ?? '',
+            'result_link' => $data['result_link'] ?? '',
+            'status'      => $status,
+        );
+        if ( ! empty( $data['id'] ) ) {
+            $competition['id'] = absint( $data['id'] );
+        }
+
+        $result = $db->save_competition( $competition );
+        if ( false === $result ) {
+            return new WP_Error( 'competition_save_failed', 'Competition could not be saved.', array( 'status' => 500 ) );
+        }
+
+        return rest_ensure_response( array( 'success' => true, 'data' => $result ) );
+    }
+
+    /**
+     * Get categories for a discipline.
+     */
+    public function get_categories( $request ) {
+        $db = new Competition_Database();
+        return rest_ensure_response( array( 'success' => true, 'data' => $db->get_categories( absint( $request['discipline_id'] ) ) ) );
+    }
+
+    /**
+     * Save category.
+     */
+    public function save_category( $request ) {
+        $data = $request->get_json_params();
+        $name = sanitize_text_field( $data['name'] ?? '' );
+        $discipline_id = absint( $data['discipline_id'] ?? 0 );
+        if ( empty( $name ) || ! $discipline_id ) {
+            return new WP_Error( 'invalid_category', 'Category name and discipline are required.', array( 'status' => 400 ) );
+        }
+
+        $db = new Competition_Database();
+        $category = array(
+            'name' => $name,
+            'discipline_id' => $discipline_id,
+            'description' => $data['description'] ?? '',
+        );
+        if ( ! empty( $data['id'] ) ) {
+            $category['id'] = absint( $data['id'] );
+        }
+        $result = $db->save_category( $category );
+        if ( false === $result ) {
+            return new WP_Error( 'category_save_failed', 'Category could not be saved. It may already exist.', array( 'status' => 400 ) );
+        }
+        return rest_ensure_response( array( 'success' => true, 'data' => $result ) );
+    }
+
+    /**
+     * Delete category.
+     */
+    public function delete_category( $request ) {
+        $result = ( new Competition_Database() )->delete_category( absint( $request['id'] ) );
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+        if ( ! $result ) {
+            return new WP_Error( 'category_delete_failed', 'Category could not be deleted.', array( 'status' => 500 ) );
+        }
+        return rest_ensure_response( array( 'success' => true ) );
+    }
+
+    /**
+     * Get competition results for admin corrections.
+     */
+    public function get_competition_results( $request ) {
+        $db = new Competition_Database();
+        return rest_ensure_response( array( 'success' => true, 'data' => $db->get_competition_results( absint( $request['competition_id'] ) ) ) );
+    }
+
+    /**
      * Delete season.
      */
     public function delete_season( $request ) {
@@ -493,6 +648,23 @@ class Competition_REST_API {
                 'Cup could not be deleted.',
                 array( 'status' => 500 )
             );
+        }
+
+        return rest_ensure_response( array( 'success' => true ) );
+    }
+
+    /**
+     * Delete competition.
+     */
+    public function delete_competition( $request ) {
+        $db = new Competition_Database();
+        $result = $db->delete_competition( absint( $request['id'] ) );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+        if ( ! $result ) {
+            return new WP_Error( 'competition_delete_failed', 'Competition could not be deleted.', array( 'status' => 500 ) );
         }
 
         return rest_ensure_response( array( 'success' => true ) );

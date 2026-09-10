@@ -122,6 +122,30 @@
         <a href="admin.php?page=competition-cup" class="btn-add">+ Add Cup</a>
     </div>
 
+    <h2>📍 Competition Management</h2>
+    <table class="table-container">
+        <thead>
+            <tr><th>ID</th><th>Competition</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="competitions-body"><tr><td colspan="5">Select a cup to load competitions.</td></tr></tbody>
+    </table>
+    <div style="text-align:center;">
+        <a href="admin.php?page=competition-competition" class="btn-add" id="add-competition-link">+ Add Competition</a>
+    </div>
+
+    <h2>Result Corrections</h2>
+    <p style="text-align:center;">
+        <label for="results-competition-id">Select competition for result corrections</label>
+        <select id="results-competition-id" aria-label="Competition for result corrections">
+            <option value="">Select competition</option>
+        </select>
+    </p>
+    <p id="results-status" class="mock-note">Select a competition to load results.</p>
+    <table class="table-container">
+        <thead><tr><th>Result ID</th><th>Athlete</th><th>Category</th><th>Placement</th><th>Status</th><th>Current Points</th><th>Adjusted Points</th><th>Reason</th><th>Action</th></tr></thead>
+        <tbody id="results-body"><tr><td colspan="9">Select a competition to load results.</td></tr></tbody>
+    </table>
+
     <h2>📤 Upload Results (Excel)</h2>
     <div class="upload-area">
         <p style="font-size:18px; color:#999;">📁 Drag &amp; drop your Excel file here, or click to browse</p>
@@ -138,6 +162,11 @@
             : '/wp-json/competition/v1';
         const seasonsBody = document.getElementById('seasons-body');
         const cupsBody = document.getElementById('cups-body');
+        const competitionsBody = document.getElementById('competitions-body');
+        const addCompetitionLink = document.getElementById('add-competition-link');
+        const resultsBody = document.getElementById('results-body');
+        const resultsStatus = document.getElementById('results-status');
+        const resultsCompetitionSelect = document.getElementById('results-competition-id');
         const connectionStatus = document.getElementById('connection-status');
         const uploadButton = document.getElementById('upload-btn');
         const uploadStatus = document.getElementById('upload-status');
@@ -157,7 +186,8 @@
         function renderCups(cups) {
             cupsBody.innerHTML = cups.length ? cups.map(function(cup) {
                 return '<tr><td>' + escapeHtml(cup.id) + '</td><td>' + escapeHtml(cup.name) + '</td><td>' + escapeHtml(cup.season_id) + '</td>' +
-                    '<td><a href="admin.php?page=competition-cup&action=edit&id=' + encodeURIComponent(cup.id) + '" class="btn-edit">Edit</a> ' +
+                    '<td><button type="button" class="btn-edit" data-view-cup-id="' + encodeURIComponent(cup.id) + '">View competitions</button> ' +
+                    '<a href="admin.php?page=competition-cup&action=edit&id=' + encodeURIComponent(cup.id) + '" class="btn-edit">Edit</a> ' +
                     '<button class="btn-delete" data-delete-url="' + apiBase + '/cups/' + encodeURIComponent(cup.id) + '">Delete</button></td></tr>';
             }).join('') : '<tr><td colspan="4">No cups found.</td></tr>';
         }
@@ -183,6 +213,8 @@
 
         function loadCompetitions(cupId) {
             const competitionSelect = document.getElementById('upload-competition-id');
+            competitionsBody.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
+            addCompetitionLink.href = 'admin.php?page=competition-competition&cup_id=' + encodeURIComponent(cupId);
             competitionSelect.innerHTML = '<option value="">Loading competitions...</option>';
             fetch(apiBase + '/competitions?cup_id=' + encodeURIComponent(cupId))
                 .then(function(response) {
@@ -191,14 +223,61 @@
                 })
                 .then(function(payload) {
                     const competitions = Array.isArray(payload.data) ? payload.data : [];
+                    competitionsBody.innerHTML = competitions.length ? competitions.map(function(competition) {
+                        return '<tr><td>' + escapeHtml(competition.id) + '</td><td>' + escapeHtml(competition.name) + '</td><td>' +
+                            escapeHtml(competition.event_date) + '</td><td>' + escapeHtml(competition.status) + '</td><td>' +
+                            '<a href="admin.php?page=competition-competition&action=edit&id=' + encodeURIComponent(competition.id) + '&cup_id=' + encodeURIComponent(cupId) + '" class="btn-edit">Edit</a> ' +
+                            '<button class="btn-delete" data-delete-url="' + apiBase + '/competitions/' + encodeURIComponent(competition.id) + '">Delete</button></td></tr>';
+                    }).join('') : '<tr><td colspan="5">No competitions found.</td></tr>';
                     competitionSelect.innerHTML = competitions.length
                         ? competitions.map(function(competition) {
                             return '<option value="' + escapeHtml(competition.id) + '">' + escapeHtml(competition.name) + ' (' + escapeHtml(competition.event_date) + ')</option>';
                         }).join('')
                         : '<option value="">No competitions found</option>';
+                    resultsCompetitionSelect.innerHTML = competitions.length
+                        ? competitions.map(function(competition) {
+                            return '<option value="' + escapeHtml(competition.id) + '">' + escapeHtml(competition.name) + ' (' + escapeHtml(competition.event_date) + ')</option>';
+                        }).join('')
+                        : '<option value="">No competitions found</option>';
+                    if (competitions.length) {
+                        competitionSelect.value = String(competitions[0].id);
+                        resultsCompetitionSelect.value = String(competitions[0].id);
+                        loadResults(competitions[0].id);
+                    }
                 })
                 .catch(function() {
+                    competitionsBody.innerHTML = '<tr><td colspan="5">Could not load competitions.</td></tr>';
                     competitionSelect.innerHTML = '<option value="">Could not load competitions</option>';
+                });
+        }
+
+        function loadResults(competitionId) {
+            document.getElementById('upload-competition-id').value = String(competitionId);
+            resultsCompetitionSelect.value = String(competitionId);
+            resultsStatus.textContent = 'Loading results...';
+            resultsBody.innerHTML = '<tr><td colspan="9">Loading...</td></tr>';
+            fetch(apiBase + '/results?competition_id=' + encodeURIComponent(competitionId), {
+                headers: { 'X-WP-Nonce': window.competitionAdmin ? window.competitionAdmin.restNonce : '' }
+            })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('Could not load competition results.');
+                    return response.json();
+                })
+                .then(function(payload) {
+                    if (payload.success === false) throw new Error(payload.message || 'Could not load competition results.');
+                    const results = Array.isArray(payload.data) ? payload.data : [];
+                    resultsBody.innerHTML = results.length ? results.map(function(result) {
+                        return '<tr><td>' + escapeHtml(result.id) + '</td><td>' + escapeHtml(result.athlete_name) + '</td><td>' + escapeHtml(result.category) + '</td><td>' +
+                            escapeHtml(result.placement || '-') + '</td><td>' + escapeHtml(result.status) + '</td><td>' + escapeHtml(result.points || 0) + '</td>' +
+                            '<td><input type="number" min="0" value="' + escapeHtml(result.points || 0) + '" data-adjusted-points></td>' +
+                            '<td><input type="text" placeholder="Reason" data-adjustment-reason></td>' +
+                            '<td><button type="button" class="btn-edit" data-adjustment-id="' + encodeURIComponent(result.id) + '">Save</button></td></tr>';
+                    }).join('') : '<tr><td colspan="9">No results found.</td></tr>';
+                    resultsStatus.textContent = 'Results loaded. Corrections require a reason.';
+                })
+                .catch(function(error) {
+                    resultsStatus.textContent = error.message;
+                    resultsBody.innerHTML = '<tr><td colspan="9">Could not load results.</td></tr>';
                 });
         }
 
@@ -230,8 +309,16 @@
                 body: formData
             })
             .then(function(response) {
-                if (!response.ok) throw new Error('Upload request failed.');
-                return response.json();
+                return response.text().then(function(text) {
+                    if (!response.ok) {
+                        throw new Error('Upload failed (HTTP ' + response.status + '): ' + (text || 'No server response.'));
+                    }
+                    try {
+                        return JSON.parse(text);
+                    } catch (error) {
+                        throw new Error('Upload returned an invalid server response.');
+                    }
+                });
             })
             .then(function(payload) {
                 if (!payload.success) {
@@ -270,6 +357,34 @@
             });
 
         document.addEventListener('click', function(event) {
+            const viewCupButton = event.target.closest('[data-view-cup-id]');
+            if (viewCupButton) {
+                loadCompetitions(viewCupButton.dataset.viewCupId);
+                return;
+            }
+            const adjustmentButton = event.target.closest('[data-adjustment-id]');
+            if (adjustmentButton && window.competitionAdmin) {
+                const row = adjustmentButton.closest('tr');
+                const adjustedPoints = row.querySelector('[data-adjusted-points]').value;
+                const reason = row.querySelector('[data-adjustment-reason]').value.trim();
+                if (!reason) {
+                    resultsStatus.textContent = 'A reason is required for a point correction.';
+                    return;
+                }
+                adjustmentButton.disabled = true;
+                adjustmentButton.textContent = 'Saving...';
+                fetch(apiBase + '/results/' + adjustmentButton.dataset.adjustmentId + '/adjustment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': window.competitionAdmin.restNonce },
+                    body: JSON.stringify({ adjusted_points: Number(adjustedPoints), adjustment_reason: reason })
+                })
+                    .then(function(response) { return response.json().then(function(payload) {
+                        if (!response.ok || payload.success === false) throw new Error(payload.message || 'Point correction failed.');
+                    }); })
+                    .then(function() { resultsStatus.textContent = 'Point correction saved.'; loadResults(resultsCompetitionSelect.value); })
+                    .catch(function(error) { resultsStatus.textContent = error.message; adjustmentButton.disabled = false; adjustmentButton.textContent = 'Save'; });
+                return;
+            }
             const deleteButton = event.target.closest('[data-delete-url]');
             if (!deleteButton || !window.competitionAdmin) return;
             if (!confirm('Are you sure you want to delete this item?')) return;
@@ -294,6 +409,20 @@
                 deleteButton.textContent = 'Delete';
                 connectionStatus.textContent = error.message;
             });
+        });
+
+        document.getElementById('upload-competition-id').addEventListener('change', function(event) {
+            if (event.target.value) {
+                resultsCompetitionSelect.value = event.target.value;
+                loadResults(event.target.value);
+            }
+        });
+
+        resultsCompetitionSelect.addEventListener('change', function(event) {
+            if (event.target.value) {
+                document.getElementById('upload-competition-id').value = event.target.value;
+                loadResults(event.target.value);
+            }
         });
     </script>
     </body>

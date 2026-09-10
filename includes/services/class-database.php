@@ -244,9 +244,98 @@ class Competition_Database {
 	public function get_competitions( $cup_id ) {
 		global $wpdb;
 		$table = $this->get_tables()['competition'];
-		$sql   = "SELECT competition_id AS id, name, cup_id, event_date, status
+		$sql   = "SELECT competition_id AS id, name, cup_id, event_date, location, result_link, status
 				FROM $table WHERE cup_id = %d ORDER BY event_date, name";
 		return $wpdb->get_results( $wpdb->prepare( $sql, absint( $cup_id ) ), ARRAY_A );
+	}
+
+	/**
+	 * Get one competition.
+	 */
+	public function get_competition( $competition_id ) {
+		global $wpdb;
+		$table = $this->get_tables()['competition'];
+		return $wpdb->get_row( $wpdb->prepare(
+			"SELECT competition_id AS id, name, cup_id, event_date, location, result_link, status FROM $table WHERE competition_id = %d",
+			absint( $competition_id )
+		), ARRAY_A );
+	}
+
+	/**
+	 * Get categories for a discipline.
+	 */
+	public function get_categories( $discipline_id ) {
+		global $wpdb;
+		$table = $this->get_tables()['category'];
+		return $wpdb->get_results( $wpdb->prepare(
+			"SELECT category_id AS id, discipline_id, name, description FROM $table WHERE discipline_id = %d ORDER BY name",
+			absint( $discipline_id )
+		), ARRAY_A );
+	}
+
+	/**
+	 * Save a category.
+	 */
+	public function save_category( $category ) {
+		global $wpdb;
+		$table = $this->get_tables()['category'];
+		$data  = array(
+			'discipline_id' => absint( $category['discipline_id'] ?? 0 ),
+			'name' => sanitize_text_field( $category['name'] ?? '' ),
+			'description' => sanitize_textarea_field( $category['description'] ?? '' ),
+		);
+
+		if ( ! empty( $category['id'] ) ) {
+			$updated = $wpdb->update( $table, $data, array( 'category_id' => absint( $category['id'] ) ) );
+			return false === $updated ? false : $wpdb->get_row( $wpdb->prepare(
+				"SELECT category_id AS id, discipline_id, name, description FROM $table WHERE category_id = %d",
+				absint( $category['id'] )
+			), ARRAY_A );
+		}
+
+		if ( false === $wpdb->insert( $table, $data ) ) {
+			return false;
+		}
+		return $wpdb->get_row( $wpdb->prepare(
+			"SELECT category_id AS id, discipline_id, name, description FROM $table WHERE category_id = %d",
+			absint( $wpdb->insert_id )
+		), ARRAY_A );
+	}
+
+	/**
+	 * Delete a category that has no imported results.
+	 */
+	public function delete_category( $category_id ) {
+		global $wpdb;
+		$tables = $this->get_tables();
+		$category_id = absint( $category_id );
+		$has_results = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$tables['result']} WHERE category_id = %d",
+			$category_id
+		) );
+		if ( $has_results ) {
+			return new WP_Error( 'category_has_results', 'A category with imported results cannot be deleted.' );
+		}
+		return false !== $wpdb->delete( $tables['category'], array( 'category_id' => $category_id ), array( '%d' ) );
+	}
+
+	/**
+	 * Get imported results for an admin correction view.
+	 */
+	public function get_competition_results( $competition_id ) {
+		global $wpdb;
+		$tables = $this->get_tables();
+		$sql = "SELECT r.result_id AS id, r.competition_id, r.rider_id, r.category_id,
+				CONCAT(rd.first_name, ' ', rd.last_name) AS athlete_name,
+				cat.name AS category, r.placement, r.status, r.points,
+				co.name AS competition_name
+			FROM {$tables['result']} r
+			JOIN {$tables['rider']} rd ON r.rider_id = rd.rider_id
+			JOIN {$tables['category']} cat ON r.category_id = cat.category_id
+			JOIN {$tables['competition']} co ON r.competition_id = co.competition_id
+			WHERE r.competition_id = %d
+			ORDER BY cat.name, r.placement IS NULL, r.placement, athlete_name";
+		return $wpdb->get_results( $wpdb->prepare( $sql, absint( $competition_id ) ), ARRAY_A );
 	}
 
 	/**
@@ -348,6 +437,59 @@ class Competition_Database {
 		return $this->get_cup( $wpdb->insert_id );
 	}
 
+	/**
+	 * Save a competition.
+	 */
+	public function save_competition( $competition ) {
+		global $wpdb;
+		$tables = $this->get_tables();
+		$data   = array(
+			'cup_id'      => absint( $competition['cup_id'] ?? 0 ),
+			'name'        => sanitize_text_field( $competition['name'] ?? '' ),
+			'event_date'  => sanitize_text_field( $competition['event_date'] ?? '' ),
+			'location'    => sanitize_text_field( $competition['location'] ?? '' ),
+			'result_link' => esc_url_raw( $competition['result_link'] ?? '' ),
+			'status'      => sanitize_text_field( $competition['status'] ?? 'Upcoming' ),
+		);
+
+		if ( ! empty( $competition['id'] ) ) {
+			$updated = $wpdb->update( $tables['competition'], $data, array( 'competition_id' => absint( $competition['id'] ) ) );
+			if ( false === $updated ) {
+				return false;
+			}
+			return $this->get_competition( $competition['id'] );
+		}
+
+		if ( false === $wpdb->insert( $tables['competition'], $data ) ) {
+			return false;
+		}
+		return $this->get_competition( $wpdb->insert_id );
+	}
+
+	/**
+	 * Delete a competition that has no imported data.
+	 */
+	public function delete_competition( $competition_id ) {
+		global $wpdb;
+		$tables = $this->get_tables();
+		$competition_id = absint( $competition_id );
+
+		$has_results = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$tables['result']} WHERE competition_id = %d",
+			$competition_id
+		) );
+		$has_imports = (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$tables['result_import']} WHERE competition_id = %d",
+			$competition_id
+		) );
+
+		if ( $has_results || $has_imports ) {
+			return new WP_Error( 'competition_has_results', 'A competition with imported results cannot be deleted.' );
+		}
+
+		return false !== $wpdb->delete( $tables['competition'], array( 'competition_id' => $competition_id ), array( '%d' ) );
+	}
+
 	public function get_athlete_results( $athlete_name, $cup_id ) {
 		global $wpdb;
 		$tables = $this->get_tables();
@@ -372,7 +514,7 @@ class Competition_Database {
 		global $wpdb;
 		$tables = $this->get_tables();
 		$count  = 0;
-		$competition_id = absint( $results[0]['competition_id'] ?? 0 );
+		$competition_id = absint( $metadata['competition_id'] ?? ( $results[0]['competition_id'] ?? 0 ) );
 		if ( ! $competition_id ) {
 			return new WP_Error( 'missing_competition_id', 'A competition ID is required.' );
 		}
@@ -396,6 +538,34 @@ class Competition_Database {
 			return new WP_Error( 'duplicate_import', 'Results already exist for this competition.' );
 		}
 
+		$total_records = count( $results ) + absint( $metadata['failed_records'] ?? 0 );
+		$import_file_name = sanitize_file_name( $metadata['file_name'] ?? 'WordPress upload' );
+		if ( false === $wpdb->insert(
+			$tables['result_import'],
+			array(
+				'competition_id' => $competition_id,
+				'file_name' => $import_file_name,
+				'import_status' => 'Pending',
+				'total_records' => $total_records,
+				'uploaded_by' => get_current_user_id(),
+			),
+			array( '%d', '%s', '%s', '%d', '%d' )
+		) ) {
+			return new WP_Error( 'import_record_failed', 'The import record could not be created.' );
+		}
+		$import_id = absint( $wpdb->insert_id );
+
+		if ( empty( $results ) ) {
+			$wpdb->update(
+				$tables['result_import'],
+				array( 'import_status' => 'Failed', 'imported_records' => 0, 'failed_records' => absint( $metadata['failed_records'] ?? 0 ) ),
+				array( 'result_import_id' => $import_id ),
+				array( '%s', '%d', '%d' ),
+				array( '%d' )
+			);
+			return new WP_Error( 'no_valid_results', 'No valid results were found in the uploaded file.' );
+		}
+
 		$wpdb->query( 'START TRANSACTION' );
 		$prepared_results = array();
 		foreach ( (array) $results as $result ) {
@@ -409,6 +579,7 @@ class Competition_Database {
 
 			if ( ! $rider_id || ! $category_id ) {
 				$wpdb->query( 'ROLLBACK' );
+				$wpdb->update( $tables['result_import'], array( 'import_status' => 'Failed', 'imported_records' => 0, 'failed_records' => $total_records ), array( 'result_import_id' => $import_id ), array( '%s', '%d', '%d' ), array( '%d' ) );
 				return new WP_Error( 'category_not_found', 'An imported category was not found for this competition.' );
 			}
 
@@ -421,23 +592,6 @@ class Competition_Database {
 				'status' => sanitize_text_field( $result['status'] ?? 'Finished' ),
 				'points' => (int) ( $result['points'] ?? 0 ),
 			);
-		}
-
-		$wpdb->insert(
-			$tables['result_import'],
-			array(
-				'competition_id' => $competition_id,
-				'file_name' => sanitize_file_name( $metadata['file_name'] ?? 'WordPress upload' ),
-				'import_status' => 'Pending',
-				'total_records' => count( $results ) + absint( $metadata['failed_records'] ?? 0 ),
-				'uploaded_by' => get_current_user_id(),
-			),
-			array( '%d', '%s', '%s', '%d', '%d' )
-		);
-		$import_id = absint( $wpdb->insert_id );
-		if ( ! $competition_id || ! $import_id ) {
-			$wpdb->query( 'ROLLBACK' );
-			return new WP_Error( 'import_record_failed', 'The import record could not be created.' );
 		}
 
 		foreach ( $prepared_results as $prepared_result ) {
@@ -456,6 +610,7 @@ class Competition_Database {
 				$count++;
 			} else {
 				$wpdb->query( 'ROLLBACK' );
+				$wpdb->update( $tables['result_import'], array( 'import_status' => 'Failed', 'imported_records' => 0, 'failed_records' => $total_records ), array( 'result_import_id' => $import_id ), array( '%s', '%d', '%d' ), array( '%d' ) );
 				return new WP_Error( 'result_insert_failed', 'A result could not be inserted.' );
 			}
 		}
@@ -546,15 +701,22 @@ class Competition_Database {
 			array( '%d', '%d', '%d', '%s', '%d' )
 		);
 
-		if ( false === $inserted || false === $wpdb->update(
+		$updated = $wpdb->update(
 			$tables['result'],
 			array( 'points' => $adjusted_points ),
 			array( 'result_id' => absint( $result_id ) ),
 			array( '%d' ),
 			array( '%d' )
-		) ) {
+		);
+		$stored_points = $wpdb->get_var( $wpdb->prepare(
+			"SELECT points FROM {$tables['result']} WHERE result_id = %d",
+			absint( $result_id )
+		) );
+
+		if ( false === $inserted || false === $updated || null === $stored_points || (int) $stored_points !== $adjusted_points ) {
 			$wpdb->query( 'ROLLBACK' );
-			return new WP_Error( 'point_adjustment_failed', 'The point adjustment could not be saved.', array( 'status' => 500 ) );
+			$error = $wpdb->last_error ? ' ' . $wpdb->last_error : '';
+			return new WP_Error( 'point_adjustment_failed', 'The point adjustment could not be saved.' . $error, array( 'status' => 500 ) );
 		}
 
 		$wpdb->query( 'COMMIT' );

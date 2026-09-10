@@ -76,7 +76,14 @@ class Competition_Excel_Importer {
 				continue;
 			}
 
-			$is_category = ! empty( $row[0] ) && ! is_numeric( $row[0] );
+			$is_status_row = false;
+			foreach ( $row as $value ) {
+				if ( in_array( strtoupper( ltrim( $value, '- ' ) ), array( 'DNS', 'DNF', 'DSQ' ), true ) ) {
+					$is_status_row = true;
+					break;
+				}
+			}
+			$is_category = ! $is_status_row && ! empty( $row[0] ) && ! is_numeric( $row[0] );
 			foreach ( $row as $value ) {
 				if ( preg_match( '/\bkm\b/i', $value ) ) {
 					$is_category = true;
@@ -100,18 +107,23 @@ class Competition_Excel_Importer {
 				$result = array( 'category' => $category, 'placement' => (int) $row[0], 'last_name' => $row[1] ?? '', 'first_name' => $row[2] ?? '', 'club' => $row[3] ?? '', 'finish_time' => $finish_time, 'status' => 'Finished' );
 			} else {
 				$status = null;
+				if ( isset( $row[0] ) && '-' === $row[0] ) {
+					array_shift( $row );
+				}
 				foreach ( $row as $value ) {
-					if ( in_array( $value, array( 'DNS', 'DNF', 'DSQ' ), true ) ) {
-						$status = $value;
+					$normalized_value = strtoupper( ltrim( $value, '- ' ) );
+					if ( in_array( $normalized_value, array( 'DNS', 'DNF', 'DSQ' ), true ) ) {
+						$status = $normalized_value;
 						break;
 					}
 				}
 				if ( $status ) {
-					$result = array( 'category' => $category, 'placement' => null, 'last_name' => $row[0] ?? '', 'first_name' => $row[1] ?? '', 'club' => $row[2] ?? '', 'finish_time' => null, 'status' => $status );
+					$result = array( 'category' => $category, 'placement' => null, 'last_name' => $row[0] ?? '', 'first_name' => $row[1] ?? '', 'club' => ( isset( $row[2] ) && ! in_array( strtoupper( ltrim( $row[2], '- ' ) ), array( 'DNS', 'DNF', 'DSQ' ), true ) ? $row[2] : '' ), 'finish_time' => null, 'status' => $status );
 				}
 			}
 
 			if ( ! $result ) {
+				$invalid[] = array( 'result' => array( 'category' => $category, 'row' => $row ), 'errors' => array( 'Could not identify a result status or placement.' ) );
 				continue;
 			}
 			$validation = validateResult( $result );

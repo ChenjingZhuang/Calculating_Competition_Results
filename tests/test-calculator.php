@@ -382,6 +382,80 @@ if ($actual === $expected) {
 echo "\n";
 
 // ============================================
+// TEST 12: Tie-breaker includes places 11-16
+// ============================================
+echo "TEST 12: Tie-breaker includes places 11-16\n";
+echo "-------------------------------------------\n";
+
+$race_results = [
+    ['placement' => 16, 'bonus_points' => 0],
+];
+
+$result = $calculator->calculate_rider_total($race_results, 1, $scoring_table);
+$expected = 1;
+$actual = $result['place_counts'][16] ?? 0;
+
+if ($actual === 1 && $result['total_score'] === $expected) {
+    echo "PASSED: 16th-place count is tracked\n";
+    $tests_passed++;
+} else {
+    echo "FAILED: 16th-place count = $actual (expected 1)\n";
+    $tests_failed++;
+}
+
+echo "\n";
+
+// ============================================
+// TEST 13: Manual points override
+// ============================================
+echo "TEST 13: Manual points override\n";
+echo "-------------------------------------------\n";
+
+$race_results = [
+    ['placement' => 1, 'points_override' => 5, 'bonus_points' => 0],
+];
+
+$result = $calculator->calculate_rider_total($race_results, 1, $scoring_table);
+$expected = 5;
+$actual = $result['total_score'];
+
+if ($actual === $expected) {
+    echo "PASSED: Manual points override = $actual\n";
+    $tests_passed++;
+} else {
+    echo "FAILED: Manual points override = $actual (expected $expected)\n";
+    $tests_failed++;
+}
+
+echo "\n";
+
+// ============================================
+// TEST 14: Shared competition rank skips positions
+// ============================================
+echo "TEST 14: Shared competition rank skips positions\n";
+echo "-------------------------------------------\n";
+
+$ranked = $calculator->assign_competition_ranks([
+    ['athlete_name' => 'Athlete A', 'total_score' => 100, 'place_counts' => [1 => 1], 'head_to_head_wins' => 0],
+    ['athlete_name' => 'Athlete B', 'total_score' => 100, 'place_counts' => [1 => 1], 'head_to_head_wins' => 0],
+    ['athlete_name' => 'Athlete C', 'total_score' => 100, 'place_counts' => [1 => 1], 'head_to_head_wins' => 0],
+    ['athlete_name' => 'Athlete D', 'total_score' => 90, 'place_counts' => [1 => 0], 'head_to_head_wins' => 0],
+]);
+
+$actual_ranks = array_column($ranked, 'rank');
+$expected_ranks = [1, 1, 1, 4];
+
+if ($actual_ranks === $expected_ranks) {
+    echo "PASSED: Shared ranks use competition ranking 1,1,1,4\n";
+    $tests_passed++;
+} else {
+    echo "FAILED: Shared ranks were " . implode(', ', $actual_ranks) . "\n";
+    $tests_failed++;
+}
+
+echo "\n";
+
+// ============================================
 // Summary
 // ============================================
 echo "===========================================\n";

@@ -38,9 +38,10 @@ class Competition_Points_Calculator {
             $values[] = $category;
         }
         
-        $sql = "SELECT r.competition_id, r.rider_id, cat.category_id, cat.name AS category_name,
+        $sql = "SELECT r.competition_id, r.rider_id, r.result_id, r.points, cat.category_id, cat.name AS category_name,
                    CONCAT(rd.first_name, ' ', rd.last_name) AS athlete_name,
                    cl.name AS club, r.placement, r.points, r.status,
+                   CASE WHEN EXISTS (SELECT 1 FROM {$tables['point_adjustment']} pa WHERE pa.result_id = r.result_id) THEN 1 ELSE 0 END AS has_point_adjustment,
                        co.name AS event_name, co.event_date
                 FROM {$tables['result']} r
                 JOIN {$tables['rider']} rd ON r.rider_id = rd.rider_id
@@ -77,6 +78,7 @@ class Competition_Points_Calculator {
             
             $athletes[ $name ]['race_results'][] = array(
                 'placement' => $result['placement'],
+                'points_override' => (int) $result['has_point_adjustment'] ? (float) $result['points'] : null,
                 'bonus_points' => 0,
                 'competition_id' => $result['competition_id'],
                 'event_name' => $result['event_name'],
@@ -97,7 +99,9 @@ class Competition_Points_Calculator {
             
             $athlete['total_score'] = $calc['total_score'];
             $athlete['place_counts'] = $calc['place_counts'];
+			$athlete['counted_results'] = $calc['counted_results'];
         }
+		unset( $athlete );
 
         $this->calculate_head_to_head_wins( $athletes );
         
@@ -109,20 +113,7 @@ class Competition_Points_Calculator {
         $standings = array();
         foreach ( $riders_by_category as $category_riders ) {
             $sorted = $calculator->sort_standings( $category_riders );
-
-            foreach ( $sorted as $rank => &$rider ) {
-                if ( 0 === $rank ) {
-                    $rider['rank'] = 1;
-                    continue;
-                }
-
-                $previous = $sorted[ $rank - 1 ];
-                $same_score = ( $rider['total_score'] ?? 0 ) === ( $previous['total_score'] ?? 0 );
-                $same_places = ( $rider['place_counts'] ?? array() ) === ( $previous['place_counts'] ?? array() );
-                $same_head_to_head = ( $rider['head_to_head_wins'] ?? 0 ) === ( $previous['head_to_head_wins'] ?? 0 );
-                $rider['rank'] = ( $same_score && $same_places && $same_head_to_head ) ? $previous['rank'] : $rank + 1;
-            }
-            unset( $rider );
+			$sorted = $calculator->assign_competition_ranks( $sorted );
 
             $standings = array_merge( $standings, $sorted );
         }
@@ -145,12 +136,12 @@ class Competition_Points_Calculator {
                 }
 
                 $first_events = array();
-                foreach ( $athletes[ $first_name ]['race_results'] as $race ) {
+                foreach ( $athletes[ $first_name ]['counted_results'] as $race ) {
                     if ( isset( $race['competition_id'] ) ) {
                         $first_events[ $race['competition_id'] ] = $race['placement'];
                     }
                 }
-                foreach ( $athletes[ $second_name ]['race_results'] as $race ) {
+                foreach ( $athletes[ $second_name ]['counted_results'] as $race ) {
                     $competition_id = $race['competition_id'] ?? null;
                     if ( null === $competition_id || ! isset( $first_events[ $competition_id ] ) ) {
                         continue;
@@ -182,7 +173,9 @@ class Competition_Points_Calculator {
         global $wpdb;
         $tables = ( new Competition_Database() )->get_tables();
         
-        $sql = "SELECT r.placement, r.points, r.status, co.name AS event_name, co.event_date
+        $sql = "SELECT r.placement, r.points, r.status,
+                   CASE WHEN EXISTS (SELECT 1 FROM {$tables['point_adjustment']} pa WHERE pa.result_id = r.result_id) THEN 1 ELSE 0 END AS has_point_adjustment,
+                   co.name AS event_name, co.event_date
             FROM {$tables['result']} r
             JOIN {$tables['rider']} rd ON r.rider_id = rd.rider_id
             JOIN {$tables['competition']} co ON r.competition_id = co.competition_id
@@ -206,6 +199,10 @@ class Competition_Points_Calculator {
         }
         
         $calculator = new Competition_Results_Calculator();
+        $results = array_map( static function ( $result ) {
+            $result['points_override'] = (int) $result['has_point_adjustment'] ? (float) $result['points'] : null;
+            return $result;
+        }, $results );
         $calc = $calculator->calculate_rider_total( $results, $counted_limit, $scoring_table );
         
         return array(
