@@ -1,4 +1,4 @@
-# Calculating_Competition_Results Project plan
+# Calculating Competition Results Project
 
 ## 1. Short Description of the Solution
 
@@ -12,13 +12,15 @@ This project automates the workflow for:
 - exporting standings to CSV
 - adjusting points manually when needed
 
-
 ## 2. Project Members and Roles
 
-- **Chenjing Zhuang** –
-- **Nikolai Podkorytov** -
-- **Katherine Sebastin** -
-- **Saku Hyvärinen** -
+- **Chenjing Zhuang** – Frontend Developer
+- **Nikolai Podkorytov** - Project Manager &
+Backend Developer
+- **Katherine Sebastin** - Data Import & Database
+Developer
+- **Saku Hyvärinen** - Ranking Logic & QA
+Engineer
 
 ## 3. Technologies
 
@@ -36,7 +38,6 @@ This project automates the workflow for:
 ### Libraries
 - PhpSpreadsheet for Excel parsing
 - custom scoring and standings logic
-
 
 ### Tools
 
@@ -130,7 +131,6 @@ Main endpoints:
 - `GET /results?competition_id={competition_id}`
 - `POST /results/{id}/adjustment`
 
-
 - `GET /standings?cup_id={cup_id}`
 - `GET /standings?cup_id={cup_id}&category={category}`
 - `GET /standings/export?cup_id={cup_id}`
@@ -141,7 +141,6 @@ Main endpoints:
 These routes are used by the admin dashboard and the public standings UI.
 Read endpoints are public; routes that create, delete, or adjust data require
 the WordPress `manage_options` capability.
-
 
 ## 7. Data Layer (Database)
 
@@ -189,8 +188,6 @@ The standings engine uses a shared calculation model:
 - manual override adjustments can change final scoring
 
 The logic is validated by `tests/test-calculator.php`.
-
-
 
 ## 8. Flow Overview
 
@@ -261,7 +258,6 @@ This loads the standings for the selected cup and category.
 #### Export standings
 Use the CSV export button in the standings UI to download results.
 
-
 ### MVP-Level Functionalities
 
 Current MVP status:
@@ -276,16 +272,3 @@ Current MVP status:
 - CSV export: implemented
 - public standings shortcode: implemented
 - test coverage for calculator logic: implemented
-
-## 10. Resourcing
-
-### Each Member Job Overview and Estimated Time
-
-| Member Name | Role | Main Responsibilities | Estimated Hours |
-| --- | --- | --- | --- |
-| Chenjing |  |  |  |
-| Nikolai |  |  |  |
-| Katherine |  |  |  |
-| Saku |  |  |  |
-
-
