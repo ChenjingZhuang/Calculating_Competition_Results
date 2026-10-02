@@ -49,25 +49,38 @@ Engineer
 
 ### Deployment
 
-1. Place the plugin folder in the WordPress installation under `wp-content/plugins/`.
-2. Activate the plugin in the WordPress admin area.
-3. Ensure the WordPress database is active and accessible.
-4. Activate the plugin to create required tables through the plugin activation hook.
+The intended experience for a non-technical admin is a normal website opened in a browser. The admin should not need VS Code, a project folder, PHP commands, or Composer. This repository is the software source; it is not itself a public website. A WordPress site must first be installed on a web host and connected to a domain.
+
+#### One-time setup by the project team or site administrator
+
+1. Choose a web hosting provider that supports WordPress, PHP 8.0 or newer, and MySQL. Register a domain name or use a domain the admin already owns. Enable HTTPS and automatic backups.
+2. Install WordPress on the hosting account. Many WordPress hosts provide a guided or one-click installation.
+3. Package the complete plugin directory as a ZIP file, keeping the directory structure intact. Include `database/parser/vendor/` because the Excel importer loads PhpSpreadsheet from that folder. Do not include the `.git` folder in a release package.
+4. Sign in to the WordPress site as an administrator. Open **Plugins > Add New Plugin > Upload Plugin**, upload the ZIP, install it, and activate **Calculating Competition Results**. Activation creates the plugin's database tables.
+5. Create an initial season, cup, competition, and categories in the plugin's admin pages.
+6. Create a public WordPress page named, for example, **Standings**, add `[competition_results_standings]` to its content, and publish it.
+7. Test the full flow on the hosted site: sign in as an administrator, import a sample Excel file, check the calculated standings, and open the public page in a private browser window.
+
+The hosting account's PHP upload-size limit must allow the admin's Excel files. Increase it through the hosting control panel or ask the hosting provider if uploads fail. Keep WordPress, PHP, and the plugin updated, use individual administrator accounts with strong passwords, and confirm that backups can be restored.
+
+#### Admin's normal use
+
+After setup, the admin uses the domain in a browser. They sign in to WordPress to manage competition data and import Excel results. Spectators open the published **Standings** page without signing in. Public API routes provide read-only data; changes require WordPress administrator permissions.
+
+This repository does not provision hosting, register a domain, or publish the site. A project team member or hosting provider must perform the one-time setup and give the admin the site's URL and their WordPress login details.
 
 #### Public Standings Page
 
-The plugin provides a shortcode for publishing cup standings on a normal WordPress page.
+The plugin provides a shortcode for publishing cup standings on a normal WordPress page. Once the one-time setup above is complete, the page is available at the site's public URL.
 
-1. Activate the plugin from the WordPress **Plugins** page.
-2. Create at least one active season, cup, competition, and import results through the Competition Results admin pages.
-3. In WordPress, create a new page, for example `Standings`.
-4. Add the following shortcode to the page content:
+1. In WordPress, create a new page, for example `Standings`.
+2. Add the following shortcode to the page content:
 
    ```text
    [competition_results_standings]
    ```
 
-5. Publish the page and open it in a browser.
+3. Publish the page and open it in a browser.
 
 ### Testing
 
